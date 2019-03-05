@@ -1,0 +1,169 @@
+<div>
+    <canvas style="border: 1px solid black;" id="canvas" width="512" height="512"></canvas>
+    <p>FPS:<span id="fps"></span></p>
+    <button id="randomize">Randomize</button>
+</div>
+<script>
+
+// class definitions
+class Bone {
+    // todo: offset for bone position relative to base?
+    constructor(base, length, rotation, constraints, bones) {
+        // position or another Bone to be connected to
+        this.base = base;
+        // length of bone
+        this.length = length;
+        // rotation of bone
+        this.rotation = rotation;
+        // rotation constraints relative to base
+        this.constraints = constraints;
+        // array of child bones connected to this one
+        this.bones = bones;
+    }
+
+    localRotation () {
+        if (this.base instanceof Bone) {
+            return this.rotation + this.base.localRotation();
+        } else {
+            return this.rotation;
+        }
+    }
+
+    endPoint () {
+        const angle = this.localRotation() * (Math.PI / 180);
+        const start = this.base instanceof Bone ? this.base.endPoint() : this.base;
+        return { 
+            x: start.x + (this.length * Math.cos(angle)), 
+            y: start.y + (this.length * Math.sin(angle))
+        };
+    }
+
+    // draw bone
+    render (ctx) {
+        const start = this.base instanceof Bone ? this.base.endPoint() : this.base;
+        const end = this.endPoint();
+
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+    }
+
+    // rotate bone within its limits
+    rotate (angle) {
+        if (Math.abs(angle + this.rotation) <= this.constraints) {
+            this.rotation += angle;
+        }
+    }
+
+    // add bone to this instance
+    // return new bone for easy chaining
+    addBone (length, rotation, constraints) {
+        let bone = new Bone(
+            this,
+            length,
+            rotation, 
+            constraints,
+            []
+        );
+        this.bones.push(bone);
+        return bone;
+    }
+}
+
+// init stuff
+const nodes = {
+    canvas: document.querySelector("canvas"),
+    fps: document.getElementById("fps"),
+    rando: document.getElementById("randomize")
+};
+nodes.ctx = nodes.canvas.getContext("2d");
+
+const thing = {
+    bone: new Bone(
+        {
+            x: 200,
+            y: 200
+        }, 
+        30,
+        0,
+        40,
+        []
+    ),
+    bias: [0,0]
+};
+
+let allBones = [];
+const wtf = () => {
+
+    const mix = {
+        g1: Math.random()*40+10,
+        g2: Math.random()*15+5,
+    };
+    mix.g1LMax = mix.g1 < 30 ? Math.random()*20+10 : Math.random()*3+2;
+    mix.g2LMax = mix.g1 < 10 ? Math.random()*5+5 : Math.random()*3+2
+
+
+    let next = thing.bone;
+    allBones = [next];
+    for (let i = 0;i < mix.g1;i++) {
+        next = next.addBone(Math.random()*mix.g1LMax, Math.random()*30, 30);
+        allBones.push(next);
+    }
+
+    let secondaryBones = [];
+    allBones.forEach(bone => {
+        let next = bone;
+        for (let i = 0;i < mix.g2;i++) {
+            next = next.addBone(Math.random()*mix.g2LMax, Math.random()*30, 30);
+            secondaryBones.push(next);
+        }
+    });
+
+    allBones = allBones.concat(secondaryBones);
+};
+wtf();
+nodes.rando.addEventListener("click", wtf);
+
+// main loop
+loop();
+async function loop () {
+    while(true) {
+        let t2 = performance.now();
+        let p = new Promise(resolve => requestAnimationFrame(t1 => {
+            // time delta
+            let dt = (t1 - t2)/1000;
+            // do not interpolate latency greater than 1 second
+            if (dt > 1) {
+                resolve();
+                return;
+            }
+
+            // randomly rotate bones
+            if (Math.random() > 0.8) {
+                thing.bias = [
+                    Math.random(),
+                    Math.random()
+                ];
+            }
+            let next = (w=[0,0]) => Math.random() > 0.5+w[0] ? -1 : Math.random() > 0.5+w[1] ? 1 : 0;
+            allBones.forEach(bone => bone.rotate(next(thing.bias)));
+
+
+            nodes.fps.innerText = 1/dt;
+            draw(nodes.ctx);
+
+            resolve();
+        }));
+
+        await p;
+    }
+}
+
+const draw = (ctx) => {
+    ctx.clearRect(0, 0, 512, 512);
+    // draw a bone
+    allBones.forEach(bone => bone.render(ctx));
+};
+
+</script>

@@ -1,0 +1,166 @@
+<html>
+    <head>
+        <style>
+
+            body {
+                margin: 0;
+            }
+
+            .container {
+                max-width: 720px;
+                margin: auto;
+                margin-top: 16px;
+                background: lightgrey;
+            }
+
+            canvas {
+                border: 1px solid black;
+                width: 720px;
+                height: 480px;
+            }
+
+            .bottom-pane {
+                width: 720px;
+                border: 1px solid black;
+                height: 300px;
+                border-top: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <canvas width="720" height="480"></canvas>
+            <canvas class="bottom-pane" width="720" height="300"></canvas>
+        </div>
+    </body>
+</html>
+<script>
+
+    // classes - todo: move to external files?
+    class CircleButton {
+        constructor(ctx, x, y, r) {
+            this.ctx = ctx;
+            this.x = x;
+            this.y = y;
+            this.r = r;
+        }
+
+        draw () {
+            const { ctx, x, y, r } = this;
+            // arbitrarily precise magic numbers
+            const magic = {
+                innerRad: 0.59375,
+                lineWidth: 0.15625,
+                lineLength: 0.78125,
+            };
+            // draw power background
+            ctx.beginPath();
+            ctx.fillStyle = "black";
+            ctx.arc(x, y, r, 0, 2*Math.PI);
+            ctx.fill();
+            ctx.closePath();
+            // power inner semi circle
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = r * magic.lineWidth;
+            ctx.beginPath();
+            ctx.arc(x, y, r * magic.innerRad, -0.35*Math.PI, 1.35*Math.PI);
+            ctx.stroke();
+            ctx.closePath();
+            // power line
+            ctx.beginPath();
+            ctx.moveTo(x, y-(r * magic.lineLength));
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.closePath();
+        }
+
+        mosueIn (x, y) {
+            // point deltas
+            const dx = x - this.x;
+            const dy = y - this.y;
+            // square magnitudes - faster than square root for distance
+            const sm = dx*dx + dy*dy;
+            const sr = this.r * this.r;
+
+            return sm <= sr;
+        }
+
+        click () {
+            game.tmp.on = !game.tmp.on;
+        }
+    }
+
+    // main game "class"
+    const game = {
+        tmp: {
+            on: false
+        },
+        // references to main screen elements
+        screen: {
+            main: document.querySelector("canvas"),
+            controls: document.querySelector(".bottom-pane"),
+            container: document.querySelector("body > .container"),
+        },
+        // objects to keep track of (entities, buttons, etc)
+        content: {
+            main: [],
+            controls: []
+        },
+        // main render functions
+        render: {
+            main: () => {
+                console.log("render main screen");
+                const ctx = game.contexts.main;
+                ctx.imageSmoothingEnabled = false;
+                ctx.fillStyle = "black";
+                ctx.fillRect(0, 0, 720, 480);
+                ctx.fillStyle = "white";
+                ctx.font = "32px monospace";
+                ctx.fillText(game.tmp.on ? "ON" : "OFF", 48, 48);
+            },
+            controls: () => {
+                console.log("render control screen");
+                const ctx = game.contexts.controls;
+                ctx.imageSmoothingEnabled = false;
+                const c = new CircleButton(ctx, 360, 150, 64);
+                c.draw();
+                game.content.controls.push(c);
+            },
+        },
+        // todo: move to external file
+        // event handlers
+        events: {
+            click: event => {
+                let { clientX: mx, clientY: my } = event;
+                const controlBounds = game.screen.controls.getBoundingClientRect();
+                mx -= controlBounds.x;
+                my -= controlBounds.y;
+
+                console.log(mx, my);
+                // see what element(s) have been clicked
+                // logic separated as get clicked elements and then fire events in case elements ever overlap
+                const clicked = game.content.controls.find(obj => obj.mosueIn(mx, my));
+                if (clicked && typeof clicked.click == "function") {
+                    clicked.click();
+                    // todo: figure out better re-render handling
+                    game.render.main();
+                }
+            }
+        },
+        // init
+        init: () => {
+            // set contexts
+            game.contexts = Object.keys(game.render).reduce((ctxs, screen) => {
+                ctxs[screen] = game.screen[screen].getContext("2d");
+                return ctxs;
+            }, {});
+
+            // initial renders
+            Object.keys(game.render).forEach(screen => game.render[screen]());
+            // event bindings
+            game.screen.container.addEventListener("click", game.events.click);
+        },
+    };
+    game.init();
+
+</script>

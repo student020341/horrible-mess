@@ -1,0 +1,887 @@
+<html>
+    <body>
+        <canvas id="canvas" width="512" height="512"></canvas>
+        <div>
+            <p>frame delta: <span id="frame-delta"></span></p>
+            <p>debug: <span id="debug"></span></p>
+            <p>last 1000 frames avg: <span id="frame-average"></span></p>
+        </div>
+        <p>Spritesheet!</p>
+        <img src="/misc/file/sprites.png" id='sprites'/>
+    </body>
+</html>
+<script>
+
+    var canvas = document.getElementById('canvas');
+    var context = canvas.getContext('2d');
+    context.imageSmoothingEnabled = false;
+    let sprites = document.getElementById('sprites');
+    let fd = document.getElementById('frame-delta');
+    let fa = document.getElementById('frame-average');
+    let debug = document.getElementById('debug');
+
+    let keymap = {
+        83: "down",
+        40: "down",
+        87: "up",
+        38: "up",
+        68: "right",
+        39: "right",
+        65: "left",
+        37: "left"
+    };
+
+    var game = {
+        consumeEvents: true,
+        workers: {},
+        mouse: {
+            x: 0,
+            y: 0
+        },
+        debug: true,
+        _debug: {
+            frames: [],
+            projectionIntersect: []
+        }
+    };
+
+    function toggleDebug(){
+        game.debug = !game.debug;
+        game._debug.frames = [];
+    }
+
+    var player = {
+        x: 80,
+        y: 40,
+        keys: {
+            down: 0,
+            up: 0,
+            left: 0,
+            right: 0
+        },
+        sprite_info: {
+            colMask: {
+                left: 8,
+                right: -8,
+                top: 16,
+                bottom: 0
+            },
+            onFrame: 0,
+            state:"idle",
+            curTick: 0,
+            dir:1 ,
+            idle: {
+                ticks: 1,
+                frames: [
+                    [9, 10]
+                ]
+            },
+            walk_down: {
+                ticks: 0.2,
+                frames: [
+                    [1, 8],
+                    [0, 8],
+                    [2, 8],
+                    [0, 8],
+                ]
+            },
+            walk_up: {
+                ticks: 0.2,
+                frames: [
+                    [1, 11],
+                    [0, 11],
+                    [2, 11],
+                    [0, 11],
+                ]
+            },
+            walk_right: {
+                ticks: 0.2,
+                frames: [
+                    [1, 10],
+                    [0, 10],
+                    [2, 10],
+                    [0, 10],
+                ]
+            },
+            walk_left: {
+                ticks: 0.2,
+                frames: [
+                    [1, 9],
+                    [0, 9],
+                    [2, 9],
+                    [0, 9],
+                ]
+            }
+        }
+    };
+
+    var entityClasses = {
+        skeleton: {
+            animations: {
+                idle: {
+                    ticks: 0.8,
+                    frames: [
+                        [6, 8],
+                        [6, 9],
+                        [6, 8],
+                        [6, 10],
+                    ]
+                }
+            }
+        },
+        slime: {
+            animations: {
+                idle: {
+                    ticks: 0.4,
+                    frames: [
+                        [0, 12],
+                        [1, 12]
+                    ]
+                },
+                spin: {
+                    ticks: 0.2,
+                    frames: [
+                        [1, 12],
+                        [0, 13],
+                        [0, 15],
+                        [0, 14]
+                    ]
+                }
+            }
+        },
+        door: {
+            animations: {
+                idle: {
+                    ticks: 1,
+                    frames: [
+                        [4, 0]
+                    ]
+                },
+                idle2: {
+                    ticks: 1,
+                    frames: [
+                        [7,0]
+                    ]
+                },
+                open: {
+                    ticks: 0.5,
+                    frames: [
+                        [4, 0],
+                        [5, 0],
+                        [6, 0],
+                        [7, 0]
+                    ]
+                },
+                close: {
+                    ticks: 0.3,
+                    frames: [
+                        [7,0],
+                        [6,0],
+                        [5,0],
+                        [4,0]
+                    ]
+                }
+            }
+        }
+    };
+
+    var entities = [
+        {
+            type: "skeleton",
+            state: "idle",
+            solid: true,
+            x: 90,
+            y: 32,
+            onFrame: 0,
+            tick: 0
+        },
+        {
+            type: "slime",
+            state: "idle",
+            solid: true,
+            x: 128,
+            y: 32,
+            onFrame: 0,
+            tick: 0
+        },
+        {
+            type: "slime",
+            state: "spin",
+            solid: true,
+            x: 170,
+            y: 32,
+            onFrame: 0,
+            tick: 0
+        },
+        {
+            type: "door",
+            state: "idle",
+            solid: true,
+            x: 352,
+            y: 256,
+            onFrame: 0,
+            tick: 0,
+            animationLimit: {
+                close: 1,
+                open: 1
+            },
+            frameAction: {
+                open: {
+                    0: self => {
+                        self.solid = false;
+                    },
+                    3: self => {
+                        // resting open state, doesn't trigger any additional actions between frames
+                        self.state = "idle2";
+                        // close the door after 2 seconds
+                        setTimeout(() => self.state = "close", 2000);
+                    }
+                },
+                close: {
+                    3: self => {
+                        // resting closed state, no frame actions
+                        self.state = "idle";
+                        // re-enable triggers/collisions once door is closed
+                        self.solid = true;
+                    }
+                }
+            }
+        }
+    ];
+
+    var tileMap = {
+        "trees" : {
+            "tall1" : [8,1],
+            "short1" : [8,3],
+            "short2" : [9,3],
+            "tall2" : [9,1]
+        },
+        "grass" : {
+            "plain" : [14, 1],
+            "grass-dense" : [15,1],
+            "grass-light" : [14,2],
+            "flowers" : [15,2]
+        },
+        "walls" : {
+            "stone" : [9, 0],
+            "stone2" : [11, 0],
+            "stone-end" : [8, 0]
+        },
+        "floors" : {
+            "wood-straight" : [5,4],
+            "wood-diag" : [4,4]
+        }
+    };
+    var staticEntities = [];
+
+    /*
+        arrangement of if statements yields these outcomes for multiple inputs:
+        vertical & horizontal: horizontal
+        up & down: down
+        left & right: right
+        no keys: idle
+    */
+    function getAnimationState () {
+        let current = player.sprite_info.state;
+        var next;
+
+        if (player.keys.down) {
+            next = "walk_down";
+        } else if (player.keys.up) {
+            next = "walk_up";
+        } else {
+            next = "idle";
+        }
+
+        if (player.keys.right) {
+            next = "walk_right";
+        } else if (player.keys.left) {
+            next = "walk_left"
+        } else {
+            next = next || "idle";
+        }
+
+        return next;
+    }
+
+    init();
+    function init () {
+
+        setupWorkers();
+        buildMap();
+        bindInput();
+        loop();
+    }
+
+    function buildMap () {
+        staticEntities = [];
+        plantForest();
+        buildHouse();
+    }
+
+    function plantForest () {
+
+        // grass tile background
+        let pool = Object.keys(tileMap.grass);
+        for (let x = 0;x < 512/32;x++) {
+            for (let y = 0;y < 512/32;y++) {
+                let index = Math.floor(Math.random() * pool.length);
+                staticEntities.push({
+                    x: x*32,
+                    y: y*32,
+                    group: "grass",
+                    tile: pool[index],
+                    solid: false,
+                });
+            }
+        }
+
+        // tree border
+        pool = Object.keys(tileMap.trees);
+        for(let x = 0;x < 512/32;x++) {
+            let index = Math.floor(Math.random() * pool.length);
+            staticEntities.push({
+                x: x*32,
+                y: 0,
+                group: "trees",
+                tile: pool[index],
+                solid: true
+            });
+        }
+        for(let x = 0;x < 512/32;x++) {
+            let index = Math.floor(Math.random() * pool.length);
+            staticEntities.push({
+                x: x*32,
+                y: 512-32,
+                group: "trees",
+                tile: pool[index],
+                solid: true
+            });
+        }
+        for(let y = 0;y < 512/32;y++) {
+            let index = Math.floor(Math.random() * pool.length);
+            staticEntities.push({
+                x: 0,
+                y: y*32,
+                group: "trees",
+                tile: pool[index],
+                solid: true
+            });
+        }
+        for(let y = 0;y < 512/32;y++) {
+            let index = Math.floor(Math.random() * pool.length);
+            staticEntities.push({
+                x: 512-32,
+                y: y*32,
+                group: "trees",
+                tile: pool[index],
+                solid: true
+            });
+        }
+    }
+
+    function buildHouse () {
+        // put in floor tiles
+        for (let x = 0;x < 5;x++) {
+            for (let y = 0;y < 4;y++) {
+                staticEntities.push({
+                    x: 512-(32*3)-(x*32),
+                    y: 32*(7-y),
+                    group: "floors",
+                    tile: "wood-straight",
+                    solid: false
+                });
+            }
+        }
+        // floor tile under door
+        staticEntities.push({
+            x: 521-64-(3*32),
+            y: 32*8,
+            group: "floors",
+            tile: "wood-straight",
+            solid: false
+        });
+        
+        // build ground/front wall
+        for (let x = 0;x < 7;x++) {
+            if (x == 3) {
+                continue;
+            }
+            staticEntities.push({
+                x: 512-64-(x*32),
+                y: 32*8,
+                group: "walls",
+                tile: "stone-end",
+                solid: true
+            });
+        }
+
+        // build side walls
+        let c = [0, 6];
+        for (let x = 0;x < c.length;x++) {
+            for (let y = 0;y < 5;y++) {
+                staticEntities.push({
+                    x: 512-64-(c[x]*32),
+                    y: 32*(8-(y+1)),
+                    group: "walls",
+                    tile: "stone",
+                    solid: true
+                }); 
+            }
+        }
+
+        // build final top wall
+        for (let x = 1;x < 6;x++) {
+            staticEntities.push({
+                x: 512-64-(x*32),
+                y: 32*3,
+                group: "walls",
+                tile: "stone2",
+                solid: true
+            });
+        }
+    }
+
+    function bindInput () {
+        document.addEventListener('keydown', e => {
+            if (game.consumeEvents) {
+                e.preventDefault();
+            }
+            let key = e.which || e.keyCode;
+            player.keys[keymap[key]] = 1;
+        });
+
+        document.addEventListener('keyup', e => {
+            if (game.consumeEvents) {
+                e.preventDefault();
+            }
+            let key = e.which || e.keyCode;
+            player.keys[keymap[key]] = 0;
+        });
+
+        document.addEventListener('mousemove', e => {
+            game.mouse.x = e.clientX;
+            game.mouse.y = e.clientY;
+
+            // fast cheap algorithm that finds if there are intersections on a line (infinite)
+            game._debug.projectionIntersect = [
+                ...staticEntities.filter(en => en.solid).filter(en => linecast(
+                    [
+                        {x: player.x+16, y: player.y+16},
+                        {x: e.clientX, y: e.clientY}
+                    ], 
+                    {
+                        tl: {x: en.x, y: en.y},
+                        bl: {x: en.x, y: en.y+32},
+                        tr: {x: en.x+32, y: en.y},
+                        br: {x: en.x+32, y: en.y+32}
+                    }
+                )),
+                ...entities.filter(en => en.solid).filter(en => linecast(
+                    [
+                        {x: player.x+16, y: player.y+16},
+                        {x: e.clientX, y: e.clientY}
+                    ], 
+                    {
+                        tl: {x: en.x, y: en.y},
+                        bl: {x: en.x, y: en.y+32},
+                        tr: {x: en.x+32, y: en.y},
+                        br: {x: en.x+32, y: en.y+32}
+                    }
+                ))
+            ];
+
+            // find actual intersection on narrowed down list of points
+            game._debug.projectionIntersect = game._debug.projectionIntersect.filter(en => lineIntersect(
+                [
+                    {x: player.x+16, y: player.y+16},
+                    {x: e.clientX, y: e.clientY}
+                ], 
+                {
+                    tl: {x: en.x, y: en.y},
+                    bl: {x: en.x, y: en.y+32},
+                    tr: {x: en.x+32, y: en.y},
+                    br: {x: en.x+32, y: en.y+32}
+                }
+            ));
+
+            // filter 1 last time for points in a reasonable distance
+            game._debug.projectionIntersect = game._debug.projectionIntersect.filter(en => {
+                return 120 >= distance(
+                    player.x+16,
+                    en.x+16,
+                    player.y+16,
+                    en.y+16
+                );
+            });
+        });
+    }
+
+    function applyInput (dt) {
+
+        let nextX = player.x;
+        let nextY = player.y;
+
+        if (player.keys.down) {
+            nextY += dt * 60;
+            if (nextY > 512-32) {
+                nextY = 512-32;
+            }
+        }
+        if (player.keys.up) {
+            nextY -= dt * 60;
+            if (nextY < 0) {
+                nextY = 0;
+            }
+        }
+        if (player.keys.right) {
+            nextX += dt * 60;
+            if (nextX > 512-32) {
+                nextX = 512-32;
+            }
+        }
+        if (player.keys.left) {
+            nextX -= dt * 60;
+            if (nextX < 0) {
+                nextX = 0;
+            }
+        }
+
+        // build array of collidable stuff and push it to physics thread - response from physics thread will move player if there are no obstructions
+        if (player.x != nextX || player.y != nextY) {
+
+            // player collision with entities
+            let rect = {
+                left: nextX + player.sprite_info.colMask.left, 
+                right: nextX+32 + player.sprite_info.colMask.right, 
+                top: nextY + player.sprite_info.colMask.top, 
+                bottom: nextY+32 + player.sprite_info.colMask.bottom
+            };
+
+            game.workers.physics.postMessage({
+                col: [
+                    rect,
+                    ...entities.filter(ent => ent.solid).map((ent, i) => { return {left: ent.x, right: ent.x+32, top: ent.y, bottom: ent.y+32, type: ent.type, index: i}; }),
+                    ...staticEntities.filter(ent => ent.solid).map((ent,i) => { return {left: ent.x, right: ent.x+32, top: ent.y, bottom: ent.y+32, type: ent.group, index: i}; })
+                ],
+                nextMove: [nextX, nextY],
+                curPos: [player.x, player.y]
+            });
+        }
+    }
+
+    function intersect(a, b) {
+        return (a.left <= b.right &&
+          b.left <= a.right &&
+          a.top <= b.bottom &&
+          b.top <= a.bottom);
+    }
+
+    async function loop () {
+        while(true) {
+            let t2 = performance.now();
+            let p = new Promise(resolve => requestAnimationFrame(t1 => {
+                // time delta
+                let dt = (t1 - t2)/1000;
+                // pretend the game was frozen if there is a huge frame delta
+                if (dt > 1) {
+                    resolve();
+                    return;
+                }
+                fd.innerHTML = dt;
+                game._debug.frames.push(dt);
+                if (game._debug.frames.length > 1000) {
+                    game._debug.frames.shift();
+                }
+                fa.innerHTML = game._debug.frames.reduce((acc, cur) => acc+cur, 0) / game._debug.frames.length;
+
+                // player animation logic!
+                player.sprite_info.curTick += dt;
+                if (player.sprite_info.curTick >= player.sprite_info[player.sprite_info.state].ticks ) {
+                    player.sprite_info.curTick = player.sprite_info.curTick - player.sprite_info[player.sprite_info.state].ticks;
+                    player.sprite_info.onFrame++;
+                    if (player.sprite_info.onFrame >= player.sprite_info[player.sprite_info.state].frames.length) {
+                        player.sprite_info.onFrame = 0;
+                    }
+                }
+                // game logic
+                applyInput(dt);
+
+                // animation logic?
+                let pa = getAnimationState();
+                debug.innerHTML = pa;
+                if (player.sprite_info.state != pa) {
+                    player.sprite_info.curTick = 0;
+                    player.sprite_info.onFrame = 0;
+                    player.sprite_info.state = pa;
+                }
+                // entity animtaion logic!
+                entityTicks(dt);
+
+                // render logic
+                drawSprites(context);
+                resolve();
+            }));
+
+            await p;
+        }
+    }
+
+    function entityTicks (dt) {
+        entities.forEach(e => {
+            e.tick += dt;
+            if (e.tick >= entityClasses[e.type].animations[e.state].ticks) {
+                e.tick -= entityClasses[e.type].animations[e.state].ticks;
+
+                // frame action
+                if (e.frameAction && e.frameAction[e.state] && e.frameAction[e.state][e.onFrame]) {
+                    e.frameAction[e.state][e.onFrame](e);
+                }
+
+                // increment frame
+                e.onFrame++;
+
+                // animation repeat
+                if (e.onFrame >= entityClasses[e.type].animations[e.state].frames.length) {
+                    if (e.animationLimit && e.animationLimit[e.state] != undefined) {
+                        e.animationLimit[e.state]--;
+                        if (e.animationLimit[e.state] > 0) {
+                            e.onFrame = 0;
+                        } else {
+                            e.onFrame = entityClasses[e.type].animations[e.state].frames.length-1;
+                        }
+                    } else {
+                        e.onFrame = 0;
+                    }
+                }
+            }
+        });
+    }
+
+    // draw static objects, then entities, then player
+    function drawSprites (c) {
+        let m = 32;
+        c.lineWidth = 1;
+
+        staticEntities.forEach(e => {
+            let coords = tileMap[e.group][e.tile];
+            c.drawImage(sprites, m*coords[0], m*coords[1], m, m, e.x, e.y, m, m);
+            if (game.debug && e.solid) {
+                c.beginPath();
+                c.rect(e.x, e.y, 32, 32);
+                c.strokeStyle = "#FF0000";
+                c.stroke();
+                c.closePath();
+            }
+        });
+
+        entities.forEach(e => {
+            let coords = entityClasses[e.type].animations[e.state].frames[e.onFrame];
+            c.drawImage(sprites, m*coords[0], m*coords[1], m, m, e.x, e.y, m, m );
+            if (game.debug && e.solid) {
+                c.beginPath();
+                c.rect(e.x, e.y, 32, 32);
+                c.strokeStyle = "#FF0000";
+                c.stroke();
+                c.closePath();
+            }
+        });
+
+        let seq = player.sprite_info[player.sprite_info.state].frames[player.sprite_info.onFrame];
+        c.drawImage(sprites, m*seq[0], m*seq[1], m, m, player.x, player.y, m, m);
+        if (game.debug) {
+            c.beginPath();
+            c.rect(
+                player.x+player.sprite_info.colMask.left, 
+                player.y+player.sprite_info.colMask.top, 
+                32+(player.sprite_info.colMask.left*-1 + player.sprite_info.colMask.right), 
+                32+(player.sprite_info.colMask.top*-1 + player.sprite_info.colMask.bottom)
+            );
+            c.strokeStyle = "#FF0000";
+            c.stroke();
+            c.closePath();
+        }
+
+        if (game.debug) {
+            // line projection intersect highlight
+            game._debug.projectionIntersect.forEach(en => {
+                c.strokeStyle = "#0000FF";
+                c.strokeRect(en.x, en.y, 32, 32);
+            });
+
+            // cursor line thing
+            c.beginPath();
+            c.lineWidth = 2;
+            c.strokeStyle="#FF0000";
+            c.moveTo(player.x+16, player.y+16);
+            c.lineTo(game.mouse.x, game.mouse.y);
+            c.stroke();
+            c.closePath();
+        }
+    }
+
+    // create a worker based on a given function
+    function createWorker (fn) {
+        let blobURL = URL.createObjectURL(new Blob(
+            ['(', fn.toString(), ')()'],
+            {type: 'application/javascript'}
+        ));
+        let worker = new Worker(blobURL);
+        URL.revokeObjectURL(blobURL);
+        return worker;
+    };
+
+    function setupWorkers () {
+        game.workers.physics = createWorker(physicsWorker);
+        game.workers.physics.onmessage = e => {
+            if (e.data.col) {
+                player.x = e.data.col[0];
+                player.y = e.data.col[1];
+                if (e.data.ent) {
+                    if (e.data.ent.type == "door") {
+                        entities[e.data.ent.index].state = "open";
+                    }
+                }
+            }
+        };
+    }
+
+    // function to be run through the createWorker function to create a dedicated physics 'thread'
+    function physicsWorker () {
+        // check if intersection is impossible - slightly faster than calculating intersections
+        const nonInt = (a,b) => {
+            return a.left > b.right || b.left > a.right || a.top > b.bottom || b.top > a.bottom;
+        };
+
+        const area = (a,b) => {
+            let mx = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+            let my = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+            return mx * my;
+        };
+
+        self.onmessage = e => {
+            if (e.data.col) {
+                // first element is player
+                let col = null;
+                for (let i = 1;i < e.data.col.length;i++) {
+                    if (!nonInt(e.data.col[0], e.data.col[i])) {
+                        col = e.data.col[i];
+                        break;
+                    }
+                }
+
+                // see if next movement reduces overlap
+                let ent = null;
+                let haveCol = false;
+                if (col) {
+                    let beforeMove = {
+                        left: e.data.curPos[0],
+                        right: e.data.curPos[0]+32,
+                        top: e.data.curPos[1],
+                        bottom: e.data.curPos[1]+32
+                    };
+                    let afterMove = {
+                        left: e.data.nextMove[0],
+                        right: e.data.nextMove[0]+32,
+                        top: e.data.nextMove[1],
+                        bottom: e.data.nextMove[1]+32
+                    };
+                    let a1 = area(beforeMove, col);
+                    let a2 = area(afterMove, col);
+
+                    if (a2 > 0) {
+                        ent = col;
+                    }
+                    if (a2 > a1) {
+                        haveCol = true;
+                    }
+                }
+
+                postMessage({
+                    col: haveCol ? e.data.curPos : e.data.nextMove,
+                    ent: ent
+                });
+            }
+        };
+    }
+
+    // test line intersection of a projection from a line between 2 points (check distance for actual intersection)
+    // l - array of 2 xy points that make the line segment
+    // r - rectangle xy coordinates for top left, bottom left, top right, bottom right corners
+    // todo: wtf is this? projection is checked in multiple directions. efficient but maybe not useful
+    function linecast (l, r) {
+        const f = (x1, x2, y1, y2, x, y) => { return (y2-y1)*x + (x1-x2)*y + (x2*y1-x1*y2); };
+
+        let tl = f(l[0].x, l[1].x, l[0].y, l[1].y, r.tl.x, r.tl.y);
+        let bl = f(l[0].x, l[1].x, l[0].y, l[1].y, r.bl.x, r.bl.y);
+        let tr = f(l[0].x, l[1].x, l[0].y, l[1].y, r.tr.x, r.tr.y);
+        let br = f(l[0].x, l[1].x, l[0].y, l[1].y, r.br.x, r.br.y);
+
+        return !( Math.sign(tl) == Math.sign(bl) && Math.sign(tr) == Math.sign(br) && Math.sign(tl) == Math.sign(br) );
+    }
+
+    function lineIntersect (l, r) {
+
+        let minX = l[0].x;
+        let maxX = l[1].x;
+        if (maxX < minX) {
+            minX = l[1].x;
+            maxX = l[0].x;
+        }
+
+        if (maxX > r.tr.x) {
+            maxX = r.tr.x;
+        }
+
+        if (minX < r.tl.x) {
+            minX = r.tl.x;
+        }
+
+        if (minX > maxX) {
+            return false;
+        }
+
+        let minY = l[0].y;
+        let maxY = l[1].y;
+        if (maxY < minY) {
+            minY = l[1].y;
+            maxY = l[0].y;
+        }
+
+        let dx = l[1].x - l[0].x;
+        if (Math.abs(dx) > 0.001) {
+            let a = (l[1].y - l[0].y) / dx;
+            let b = l[0].y - (a * l[0].x);
+            minY = a * minX + b;
+            maxY = a * maxX + b;
+        }
+
+        if (minY > maxY) {
+            let tmp = maxY;
+            maxY = minY;
+            minY = tmp;
+        }
+
+        if (maxY > r.bl.y) {
+            maxY = r.bl.y;
+        }
+
+        if (minY < r.tl.y) {
+            minY = r.tl.y;
+        }
+
+        if (minY > maxY) {
+            return false;
+        }
+
+        return true;
+    }
+
+    // return unrooted distance
+    function distance (x1, x2, y1, y2) {
+        let dx = Math.abs(x1-x2);
+        let dy = Math.abs(y1-y2);
+        return dx + dy;
+    }
+
+</script>

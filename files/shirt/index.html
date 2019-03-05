@@ -1,0 +1,96 @@
+<html>
+    <body>
+        <div id="app"></div>
+    </body>
+    <script>
+        
+        // it's functional so it's being left a mess since it's a demonstration of the server.
+        const app = {
+            root: null,
+            months: [
+                "January", "February", "March", "April",
+                "May", "June", "July", "August",
+                "Sepember", "October", "November", "December"
+            ],
+            info: data => `<p>Days since the beginning: ${data["days-since-zero"]}</p>
+                    <p>Offset in shirt matrix: ${data["offset"]}</p>
+                    <p>Shirt Color: ${data["color"]}</p>
+                    <p>Shirt Number: ${data["number"]}</p>`,
+            init: async el => {
+                app.root = el;
+                el.innerText = "loading...";
+                
+                const _format = v => { 
+                    return v < 10 ? `0${v}` : v;
+                };
+                const date = new Date();
+                const dateString = `${date.getFullYear()}-${_format(date.getMonth()+1)}-${_format(date.getDate())}T00:00:00Z`;
+
+                let data = await fetch("/shirt/date", {
+                    method: "REPORT",
+                    body: JSON.stringify({
+                        date: dateString
+                    })
+                })
+                .then(res => res.json());
+
+                el.innerHTML = `<div id="info">
+                    <p>Today (RFC3339): ${dateString}</p>
+                    ${app.info(data)}
+                </div>
+                <div id="controls">
+                    <div>
+                        <select id="year">
+                            <option>${date.getFullYear()}</option>
+                            <option>${date.getFullYear()+1}</option>
+                            <option>${date.getFullYear()+2}</option>
+                        </select>
+                        <select id="month">
+                            ${app.months.map((m, i) => `<option ${i == date.getMonth() ? `selected="selected"` : ""} value="${i}">${m}</option>`).join("")}
+                        </select>
+                        <select id="day">
+                        </select>
+                        <button id="submit-date">submit</button>
+                    </div>
+                </div>`;
+
+                let daysThisMonth = new Date(date.getFullYear(), date.getMonth()+1, 0).getDate();
+                el.querySelector("#controls #day").innerHTML = Array.from(new Array(daysThisMonth)).map((_, index) => `<option ${index+1 == date.getDate() ? `selected="selected"` : ""} >${index+1}</option>`).join("");
+                submitDate = el.querySelector("#controls #submit-date");
+                submitDate.addEventListener("click", () => {
+                    const _v = id => { 
+                        let v = Number(el.querySelector(`#controls #${id}`).value);
+                        return v < 10 ? `0${v}` : v;
+                    };
+                    const _f = s => Number(s) < 10 ? `0${s}` : s;
+                    app.searchDate(`${_v("year")}-${_f(Number(_v("month"))+1)}-${_v("day")}T00:00:00Z`);
+                });
+                // change days on month change
+                ["year", "month"].forEach(item => {
+                    const _g = e => app.root.querySelector(`#controls #${e}`);
+                    let el = _g(item);
+                    el.addEventListener("change", () => {
+                        let currentYear = _g("year").value;
+                        let currentMonth = Number(_g("month").value)+1;
+                        let tdays = new Date(currentYear, currentMonth, 0).getDate();
+                        _g("day").innerHTML = Array.from(new Array(tdays)).map((_, index) => `<option ${index == 0 ? `selected="selected"` : ""} >${index+1}</option>`).join("");
+                    });
+                });
+            },
+            searchDate: async date => {
+                fetch("/shirt/date", {
+                    method: "REPORT",
+                    body: JSON.stringify({
+                        date: date
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    app.root.querySelector("#info").innerHTML = data.status ? data.status : app.info(data);
+                });
+            },
+        };
+        app.init(document.getElementById("app"));
+
+    </script>
+</html>

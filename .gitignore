@@ -1,0 +1,5 @@
+# exclude built modules
+*.so
+
+# exclude server executable
+server

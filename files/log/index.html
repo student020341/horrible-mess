@@ -1,0 +1,23 @@
+<div>
+    <label>file name</label><br>
+    <input type="text" id="filename" /><br>
+    <label>message</label><br>
+    <textarea id="message"></textarea><br>
+    <button id="send">send</button>
+</div>
+<script>
+    const [filename, message, send] = ["filename","message", "send"].map(id => document.getElementById(id));
+    send.addEventListener("click", async () => {
+        
+        const fn = filename.value || "default";
+
+        await fetch(`/log/write/${fn}`, {
+            method: "POST",
+            body: JSON.stringify({
+                content: message.value
+            })
+        });
+
+        message.value = "";
+    });
+</script>

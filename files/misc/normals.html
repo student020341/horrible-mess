@@ -1,0 +1,511 @@
+<html>
+    <head>
+        <style>
+            body {
+                margin: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <canvas style="border: 1px solid black;" id="canvas" width="512" height="512"></canvas>
+        <p id="debug"></p>
+    </body>
+</html>
+<script>
+
+    var keymap = {
+        83: "down",
+        40: "down",
+        87: "up",
+        38: "up",
+        32: "up",
+        68: "right",
+        39: "right",
+        65: "left",
+        37: "left"
+    };
+
+    var game = {
+        canvas: null,
+        context: null,
+        debug: null, // dom
+        _debug: {}, // message object
+        entities: [],
+        char: null,
+        running: true,
+        keys: {left: 0, right: 0, up: 0, down: 0},
+        verticalImpulse: 0,
+        preventDefault: false,
+    };
+
+    init();
+    async function init () {
+
+        // get canvas and context refs
+        game.canvas = document.getElementById('canvas');
+        game.context = canvas.getContext('2d');
+        game.debug = document.getElementById('debug');
+
+        // mouse listener
+        game.canvas.addEventListener('click', e => {
+            let point = {
+                left: e.clientX-2,
+                right: e.clientX+4,
+                top: e.clientY-2,
+                bottom: e.clientY+4
+            };
+            let player = game.entities.find(ent => ent.keyboard);
+            point.left += player.x-256;
+            point.right += player.x-256;
+            point.top += player.y-256;
+            point.bottom += player.y-256;
+            let clicked = game.entities.filter(ent => {
+                let box = {
+                    left: ent.x,
+                    right: ent.x+ent.width,
+                    top: ent.y,
+                    bottom: ent.y+ent.height
+                };
+
+                return !nonInt(point, box);
+            });
+
+            game._debug["clicked on"] = clicked.map(ent => `x:${ent.x} y:${ent.y} w:${ent.width} h:${ent.height}`).join(", ");
+        });
+
+        // key listeners
+        const _pkey = (e, val) => {
+            if (game.preventDefault) {
+                e.preventDefault();
+            }
+            let key = e.which || e.keyCode;
+            if (keymap[key] != undefined) {
+                game.keys[keymap[key]] = val;
+            }
+        };
+        [['keydown', 1], ['keyup', 0]].forEach(ev => document.addEventListener(ev[0], e => _pkey(e, ev[1])));
+
+        // canvas settings
+        game.context.imageSmoothingEnabled = false;
+
+        generateLevel();
+        loop();
+    }
+
+    function generateLevel () {
+        let entities = [];
+
+        [
+            // 2d character controller stuff
+            {
+                x: 22,
+                y: 300,
+                width: 10,
+                height: 10,
+                static: false,
+                solid: true,
+                color: 'black',
+                keyboard: true,
+                grounded: false,
+                groundedTo: null,
+                moveDelta: {x: 0, y: 0},
+                events: {
+                    collision: (self, c) => {
+                        // landed on something
+                        if (c.normal.y == 1) {
+                            self.grounded = true;
+                            self.groundedTo = c.entity;
+                            self.moveDelta.y = 0;
+                        }
+                        // hit a ceiling
+                        else if (c.normal.y == -1) {
+                            self.moveDelta.y = 0;
+                        }
+                        // cancel movement if trying to walk into a wall
+                        if (c.normal.x == 1 && self.moveDelta.x < 0 || c.normal.x == -1 && self.moveDelta.x > 0) {
+                            self.moveDelta.x = 0;
+                        }
+                    }
+                }
+            },
+            // level
+            {
+                x: 10,
+                y: 320,
+                width: 500,
+                height: 10,
+                static: true,
+                solid: true,
+                color: 'black'
+            },
+            {
+                x: 20,
+                y: 220,
+                width: 480,
+                height: 10,
+                static: true,
+                solid: true,
+                color: 'black'
+            },
+            {
+                x: 80,
+                y: 300,
+                width: 20,
+                height: 20,
+                static: true,
+                solid: true,
+                color: 'black',
+                events: {
+                    collision: (self, c) => {
+                        // throw the player up
+                        if (c.entity.keyboard && c.normal.y == -1) {
+                            c.entity.moveDelta.y = -150;
+                        }
+
+                        if (self.color == "black") {
+                            self.color = "blue";
+                        } else if (self.color == "blue") {
+                            self.color = "red";
+                        } else if (self.color == "red") {
+                            self.color = "black";
+                        }
+                    }
+                }
+            },
+            {
+                x: 500,
+                y: 220,
+                width: 10,
+                height: 100,
+                static: true,
+                solid: true,
+                color: 'black'
+            },
+            {
+                x: 10,
+                y: 220,
+                width: 10,
+                height: 100,
+                static: true,
+                solid: true,
+                color: 'black'
+            },
+            {
+                x: 20,
+                y: 260,
+                width: 30,
+                height: 10,
+                static: true,
+                solid: true,
+                color: 'black'
+            },
+            {
+                x: 100,
+                y: 250,
+                width: 60,
+                height: 10,
+                static: true,
+                solid: true,
+                color: 'black'
+            },
+            {
+                x: 150,
+                y: 290,
+                width: 30,
+                height: 10,
+                static: true,
+                solid: true,
+                color: 'black'
+            },
+            {
+                x: 210,
+                y: 290,
+                width: 30,
+                height: 10,
+                static: true,
+                solid: true,
+                color: 'black'
+            },
+            {
+                x: 220,
+                y: 250,
+                width: 10,
+                height: 10,
+                static: true,
+                solid: true,
+                color: "orange",
+                events: {
+                    collision: (self, c) => {
+                        // a player hit this tile from below
+                        if (c.entity.keyboard && c.normal.y == 1) {
+                            if (self.color == "orange") {
+                                self.color = "red";
+                            } else if (self.color == "red") {
+                                self.solid = false;
+                                self.color = "transparent";
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                x: 190,
+                y: 305,
+                width: 10,
+                height: 10,
+                static: true,
+                solid: true,
+                color: "red",
+                events: {
+                    collision: (self, c) => {
+                        // player
+                        if (c.entity.keyboard) {
+                            c.entity.x = 22;
+                            c.entity.y = 300;
+                        }
+                    }
+                }
+            }
+        ].forEach(ent => {
+            entities.push(ent);
+        });
+
+        for(let i = 0;i < 5;i++){
+            entities.push({
+                x: 260+(i*22),
+                y: 290,
+                width: 10,
+                height: 10,
+                static: true,
+                solid: true,
+                color: "orange",
+                events: {
+                    collision: (self, c) => {
+                        // a player hit this tile from below
+                        if (c.entity.keyboard && c.normal.y == 1) {
+                            if (self.color == "orange") {
+                                self.color = "red";
+                            } else if (self.color == "red") {
+                                self.solid = false;
+                                self.color = "transparent";
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        game.entities = entities;
+    }
+
+    function drawLevel () {
+        let ent = game.entities;
+        let ctx = game.context;
+        
+        let player = game.entities.find(ent => ent.keyboard);
+        let offset = [0, 0];
+        if (player){
+            offset[0] = player.x;
+            offset[1] = player.y;
+        }
+
+        ctx.clearRect(0, 0, 512, 512);
+        ent.forEach(e => {
+            ctx.strokeStyle = e.color;
+            ctx.strokeRect(e.x-offset[0]+256, e.y-offset[1]+256, e.width, e.height);
+        });
+    }
+
+    function playerStep (dt) {
+        // grab player entity
+        let p = game.entities.find(ent => ent.keyboard);
+        if (!p){ return; }
+        // apply inputs from previous frame
+        p.x += p.moveDelta.x * dt;
+        p.y += p.moveDelta.y * dt;
+
+        // get player inputs
+        let md = {x: 0, y: p.moveDelta ? p.moveDelta.y : 0};
+        if (game.keys["right"]) {
+            md.x += 50;
+        }
+        if (game.keys["left"]) {
+            md.x -= 50;
+        }
+        if (game.keys["up"] && p.grounded) {
+            md.y = -120;
+            p.grounded = false;
+        }
+
+        // movement intent, more of a pre-delta
+        p.moveDelta = md;
+    }
+
+    async function loop () {
+        while(true) {
+            let t2 = performance.now();
+            let p = new Promise(resolve => requestAnimationFrame(t1 => {
+                // time delta
+                let dt = (t1 - t2)/1000;
+                // do not interpolate latency greater than 1 second
+                if (dt > 1 || !game.running) {
+                    resolve();
+                    return;
+                }
+                
+                // game logic
+                // get all collisions that may take place in the next frame
+                physicsStep(dt);
+
+                // player keys and reactions to physics
+                playerStep(dt);
+
+                // other stuff
+                drawLevel();
+                debug(dt);
+
+                resolve();
+            }));
+
+            await p;
+        }
+    }
+
+    function physicsStep (dt) {
+        // things that might collide with other things
+        // keyboard => player controller
+        // move => continuous movement
+        let movables = game.entities.filter(ent => ent.keyboard);
+        // things that can be collided with
+        let collidables = game.entities.filter(ent => ent.solid);
+
+        movables.forEach(mov => {
+            if (!mov.moveDelta) {return;}
+
+            // does this object obey gravity?
+            if ("grounded" in mov) {
+                // is this object currently free falling?
+                if (!mov.grounded && mov.moveDelta.y < 150) {
+                    mov.moveDelta.y += dt * 150;
+                }
+            }
+
+            // see if this object is going to collide with anything in its next step
+            let collisions = getCollisionInfo(
+                mov, 
+                {
+                    x: mov.moveDelta.x*dt,
+                    y: mov.moveDelta.y*dt
+                }, 
+                // exclude entities from their own collision test
+                collidables.filter(ent => mov != ent)
+            );
+
+            collisions.forEach(c => {
+                // react to each collision
+                if (mov.events && mov.events.collision) {
+                    mov.events.collision(mov, c);                    
+                }
+                // generate inverse collision events for each colliding entity
+                if (c.entity.events && c.entity.events.collision) {
+                    c.entity.events.collision(c.entity, {
+                        entity: mov,
+                        normal: {x: c.normal.x *= -1, y: c.normal.y *= -1}
+                    });
+                }
+            });
+
+            // if there are no collisions and this object obeys gravity then tell it it's falling
+            if (collisions.length == 0 && "grounded" in mov) {
+                mov.grounded = mov.groundedTo != null && getCollisionInfo(mov, {x: 0, y: 4}, [mov.groundedTo]).length > 0;
+                if (!mov.grounded) {
+                    mov.groundedTo = null;
+                }
+            }
+        });
+    }
+
+    function getCollisionInfo (entity, moveDelta, collidables) {
+        // calculate bounding box of current pos
+        let curPos = {
+            left: entity.x,
+            right: entity.x+entity.width,
+            top: entity.y,
+            bottom: entity.y+entity.height
+        };
+
+        // calculate bounding box of next pos
+        let afterPos = Object.assign({}, curPos);
+        afterPos.right += moveDelta.x;
+        afterPos.left += moveDelta.x;
+        afterPos.top += moveDelta.y;
+        afterPos.bottom += moveDelta.y;
+
+        // check if next pos intersect with anything
+        let potentialCollisions = collidables.filter(obj => {
+            let box = {
+                left: obj.x,
+                right: obj.x+obj.width,
+                top: obj.y,
+                bottom: obj.y+obj.height
+            };
+
+            return !nonInt(afterPos, box);
+        });
+
+        return potentialCollisions.map(obj => {
+            let box = {
+                left: obj.x,
+                right: obj.x+obj.width,
+                top: obj.y,
+                bottom: obj.y+obj.height
+            };
+
+            return {
+                entity: obj,
+                normal: collNormal(curPos, box)
+            };
+        });
+    }
+
+    function collNormal (a,b) {
+        return {
+            x: a.left > b.right ? 1 : b.left > a.right ? -1 : 0,
+            y: a.top > b.bottom ? -1 : b.top > a.bottom ? 1 : 0
+        }
+    }
+
+    function nonInt (a,b) {
+        return a.left > b.right || b.left > a.right || a.top > b.bottom || b.top > a.bottom;
+    }
+
+    function debug (dt) {
+
+        game._debug["time delta"] = dt;
+        game._debug["keys"] = Object.keys(game.keys).reduce((acc, cur) => `${acc}<br>${cur}:${game.keys[cur]}`, '');
+
+        game.debug.innerHTML = 'DEBUG' + Object.keys(game._debug).reduce((acc, cur) => `${acc}<br><br>====<br>(${cur})${game._debug[cur]}`, '');
+    }
+
+    // todo
+    // - convert colldirs to an xy vector
+    //  done, collNormal
+    // - refactor code to use collision normals instead of [bool, bool, bool, bool]
+    //  done
+    // - in physics step, add inverse normal collision to hit objects (ex: player hits mob from above, player gets normal {x:0, y:1}, mob gets normal {x:0, y:-1})
+    // done
+    // - refactor collisions to trigger an event between the two entities
+    // done - causes issue, see groundedTo
+    // - implement groundedTo so gravity doesn't generate a million collision events
+    // done, it works!
+    // - moving platform to expand groundedTo system
+    // - remove and revist 'mob' entities
+    // removed, awaiting rework
+    // - add bricks
+    // done
+    // - tag/entity names for ids
+    // - dynamic id system?
+    // - create an everything-that-happened-this-frame physics thing utilizing the id system
+    // - create map from json
+    // - better camera follow
+</script>

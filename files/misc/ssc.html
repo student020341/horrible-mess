@@ -1,0 +1,185 @@
+<div>
+    <style>
+        body {
+            margin: 0;
+        }
+        canvas {
+            width: 512px;
+            height: 512px;
+            outline: 1px solid black;
+        }
+    </style>
+    <canvas id="canvas" width="512" height="512"></canvas>
+    <p id="status"></p>
+</div>
+<script>
+
+// dom nodes
+let nodes = ["canvas", "status"].reduce((obj, id) => { obj[id] = document.getElementById(id); return obj; }, {});
+let ctx = nodes.canvas.getContext("2d");
+
+// log stuff
+let log = [];
+addLog("connecting");
+
+// this client's mouse
+let lastX = 0, lastY = 0;
+let nextX = 0, nextY = 0;
+
+class CanvasAndSocketStuff {
+    constructor(name) {
+        // init some vars!
+        this.id = null;
+        this.clients = {};
+        this.ready = false;
+        this.name = name;
+
+        // initialize websocket and events
+        this.ws = this.socketStuff();
+
+        // event binding on dom canvas
+        this.canvasStuff();
+    }
+
+    socketStuff () {
+        let socket = new WebSocket("ws://rldv0211.gcsc.att.com:18168/ssc/connect");
+        socket.onopen = () => this.ready = true;
+        socket.onmessage = event => {
+            let data = JSON.parse(event.data);
+            // don't do anything until user has an id
+            if (this.id == null) {
+                if (data.id) {
+                    this.id = data.id;
+                    addLog(`joined as client #${this.id}`);
+                    // send nickname to server
+                    this.ws.send(JSON.stringify({
+                        action: "client-name",
+                        name: this.name,
+                    }))
+                }
+            } else if (data.message && !isNaN(data.client)) {
+                console.log(`${data.client == 0 ? `client ${data.id}` : `server`} says: ${data.message}`);
+            } else if (data.client, !isNaN(data.x) && !isNaN(data.y)) {
+                this.updateClientMouse(data.client, data.x, data.y);
+            } else if (data.action) {
+                this.serverAction(data);
+            } else {
+                console.log(data);
+            }
+        };
+
+        return socket;
+    }
+
+    canvasStuff () {
+
+        // slightly delayed update
+        setInterval(() => {
+            // wait for socket connection to be open!
+            if (!this.ready){ return; }
+
+            if (lastX != nextX || lastY != nextY) {
+                lastX = nextX;
+                lastY = nextY;
+
+                this.ws.send(JSON.stringify({
+                    action: "client-position",
+                    x: lastX,
+                    y: lastY,
+                }));
+            }
+        }, 60);
+
+        nodes.canvas.addEventListener("mousemove", event => {
+            nextX = event.clientX;
+            nextY = event.clientY;
+        });
+    }
+
+    draw () {
+        ctx.clearRect(0, 0, 512, 512);
+
+        // todo: move this so client movement looks less laggy?
+        ctx.strokeRect(nextX-10, nextY-10, 20, 20);
+        ctx.font = "18px monospace";
+        ctx.fillText(this.id, nextX-9, nextY+6);
+        ctx.fillText(this.name, nextX-10, nextY+28);
+
+        Object.entries(this.clients).forEach(([clientId, client]) => {
+            ctx.strokeRect(client.x-10, client.y-10, 20, 20);
+            ctx.fillText(clientId, client.x-9, client.y+6);
+            ctx.fillText(client.name, client.x-10, client.y+28);
+        });
+    }
+
+    serverAction (data) {
+        switch (data.action) {
+            case "client-add":
+                this.clients[data.client] = {x: 0, y:0};
+                break;
+            case "client-remove":
+                delete this.clients[data.client];
+                break;
+            case "add-clients":
+                data.clients.forEach(c => this.clients[c.id] = {x: c.x, y: c.y, name: c.name});
+                break;
+            case "client-name":
+                this.clients[data.client].name = data.name;
+                break;
+            default: 
+                console.log("server wants this client to:", data);
+        }
+    }
+
+    updateClientMouse (client, x, y) {
+        if (this.clients[client]) {
+            this.clients[client].x = x;
+            this.clients[client].y = y;
+        }
+    }
+}
+
+let nickname, stuff;
+nickname = prompt("enter a nickname");
+while (!nickname) {
+    nickname = prompt("enter a nickname");
+}
+
+stuff = new CanvasAndSocketStuff(nickname);
+loop();
+
+function addLog (text) {
+    log.push(text);
+    if (log.length > 50) {
+        log.pop();
+    }
+    nodes.status.innerText = log.join("\n");
+}
+
+async function loop () {
+        while(true) {
+            let t2 = performance.now();
+            let p = new Promise(resolve => requestAnimationFrame(t1 => {
+                // time delta
+                let dt = (t1 - t2)/1000;
+                // do not simulate a huge frame delta
+                if (dt > 1) {
+                    resolve();
+                    return;
+                }
+                
+                stuff.draw();
+                resolve();
+            }));
+
+            await p;
+        }
+    }
+
+/*
+todo:
+    - add numbers to clients
+
+*/
+
+</script>

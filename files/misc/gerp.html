@@ -1,0 +1,147 @@
+<div>
+    <style>
+        body {
+            margin: 0;
+            background: black;
+            font-family: monospace;
+        }
+
+        .lines {
+            color: white;
+        }
+
+        #search {
+            color: black;
+            background: white;
+            padding: 4px;
+        }
+
+        #search input[type=text] {
+            width: 100%;
+        }
+    </style>
+    <!-- search settings -->
+    <div id="search">
+        <div>
+            <label>directory</label>
+            <input type="text" name="dir" value="/opt/te1680/repos/ud/UD_Cluster/www/UD" />
+        </div>
+        <div>
+            <label>case sensitive</label>
+            <input type="checkbox" name="match-case" />
+        </div>
+        <div>
+            <label>Evaluate</label>
+            <input type="checkbox" name="eval" />
+        </div>
+        <div>
+            <label>File only</label>
+            <input type="checkbox" name="file-only" />
+        </div>
+        <div>
+            <label>Search string</label>
+            <input type="text" name="text" value="showNonM5AdminButton" />
+        </div>
+        <div>
+            <button name="submit">Search</button>
+        </div>
+    </div>
+    <!-- lines -->
+    <div id="container" class="lines"></div>
+</div>
+<script>
+
+    const colors = {
+        "35": "#f960f9",
+        "36": "#9e9ef7",
+        "32": "#44ff44",
+        "01;31" : "#fb7171"
+    };
+
+    const getHTML = line => {
+        const cap = /\[(.*)m\[K/;
+        let str = "";
+        let buf = "";
+        let mode = 0;
+        let color = -1;
+
+        const _initial = c => {
+            if (c == "") {
+                mode = 1;
+            } else {
+                // prevent html from rendering since this is being lazily added to dom
+                if (c == "<") {
+                    c += '<span></span>';
+                }
+                str += c;
+            }
+        };
+
+        const _second = c => {
+            buf += c;
+            if (buf.endsWith("[K")) {
+                if (buf == "[m[K") {
+                    // terminate a color segment
+                    str += "</span>"
+                } else if (cap.test(buf)) {
+                    // begin a color segment
+                    str += `<span style="color: ${colors[buf.match(cap)[1]]}">`;
+                }
+                buf = "";
+                mode = 0;
+            }
+        };
+
+        Array.from(line).forEach(char => {
+
+            switch(mode) {
+                case 0: _initial(char); break;
+                case 1: _second(char); break;
+            }
+        });
+
+        return `<p>${str}</p>`;
+    };
+
+    (async () => {
+        let container = document.getElementById("container");
+        let search = document.getElementById("search");
+        
+        // let data = await fetch("/gerp", { method: "REPORT", body: JSON.stringify({ blop: "beep" }) })
+        //     .then(response => response.json());
+
+        // let line = data.output.split("\n")[0];
+        // data.output.split("\n").forEach(line => {
+        //     container.innerHTML += getHTML(line);
+        // });
+
+        let searchNodes = ["dir", "match-case", "eval", "file-only", "submit", "text"]
+            .reduce((acc, next) => {
+                acc[next] = search.querySelector(`[name="${next}"]`);
+                return acc;
+            }, {});
+
+        searchNodes.submit.addEventListener("click", async () => {
+            container.innerHTML = "";
+            let data = await fetch("/gerp", {
+                method: "REPORT", 
+                body: JSON.stringify({
+                    dir: searchNodes.dir.value,
+                    matchCase: searchNodes["match-case"].checked,
+                    eval: searchNodes.eval.checked,
+                    fileOnly: searchNodes["file-only"].checked,
+                    text: searchNodes.text.value
+                })
+            }).then(response => response.json());
+
+            if (data.output) {
+                data.output.split("\n").forEach(line => {
+                    container.innerHTML += getHTML(line);
+                });
+            } else {
+                container.innerHTML = data.status == "exit status 1" ? "0 results" : data.status;
+            }
+        });
+    })();
+
+</script>

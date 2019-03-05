@@ -1,0 +1,172 @@
+<style>
+	body {
+		margin: 0;
+	}
+</style>
+<div>
+    <div id="container"></div>
+	<p>FPS:<span id="fps"></span></p>
+	<div>
+		<label>Rotation Y axis</label>
+		<input type="range" min="0" max="6.28319" value="0" step="0.1" id="rotY" />
+	</div>
+	<div>
+		<label>Rotation X axis</label>
+		<input type="range" min="0" max="6.28319" value="0" step="0.1" id="rotX" />
+	</div>
+</div>
+<script src="/misc/file/three.min.js"></script>
+<script src="/misc/file/WheelBoneSkinClasses.js"></script>
+<script>
+
+let domNodes = {
+    fps: document.getElementById("fps"),
+    container: document.getElementById("container"),
+};
+
+var scene, camera, renderer, controls, stats, mesh, mesh2, mesh3;
+var clock = new THREE.Clock();
+var cube;
+var line, line2, line3;
+
+var modelData = {
+	theta: 0,
+	phi: 0,
+};
+
+// initialization
+init();
+function init() 
+{
+	/*
+	NOTE: most of this code is boilerplate stripped from a hello world example to get the lights, rendering, materials, etc.
+	*/
+	scene = new THREE.Scene();
+	
+	// set the view size in pixels (custom or according to window size)
+	var SCREEN_WIDTH = 400, SCREEN_HEIGHT = 300;	
+	// camera attributes
+	var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 1, FAR = 2000;
+	// set up camera
+	camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
+	// add the camera to the scene
+	scene.add(camera);
+	// camera.position.set(0,0,50);
+	camera.position.set(0,0,12);
+	
+	// create and start the renderer; choose antialias setting.
+	renderer = new THREE.WebGLRenderer( {antialias:true} );
+	
+	renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+	
+	// attach renderer to the container div
+	domNodes.container.appendChild( renderer.domElement );
+	
+	// create a light
+	var ambientLight = new THREE.AmbientLight(0x111111);
+	scene.add(ambientLight);	
+	
+	let skeleton = new Skeleton(
+		[
+			new DiscBone(new THREE.Vector3(0, 0, 0), {segment: 4, rotation: [0, Math.PI/2]}),
+			// new DiscBone(new THREE.Vector3(0, 16, 0), {segment: 4, rotation: [-Math.PI/4, Math.PI/2]}),
+			// new DiscBone(new THREE.Vector3(16, 16, 0), {segment: 4, rotation: [-Math.PI/2, Math.PI/2]}),
+		]
+	);
+	mesh3 = skeleton.createModel();
+	scene.add(mesh3);
+
+	// target line
+	line = BoneUtils.SimpleLine([
+		new THREE.Vector3(0, 0, 0),
+		new THREE.Vector3(5, 10, 10)
+	]);
+	scene.add(line);
+
+	// current line
+	line2 = BoneUtils.SimpleLine([
+		new THREE.Vector3(0, 0, 0),
+		new THREE.Vector3(0, 0, 10)
+	], 0xff0000);
+	scene.add(line2);
+
+	var tp = [
+		new THREE.Vector3(0, 0, 0)
+	].concat([
+		[0, Math.PI/2],
+		[Math.PI * (1/4), Math.PI*(5/8)], // working on this, 
+		[Math.PI/2, Math.PI * (3/4)],
+		[Math.PI*(3/4), Math.PI*(3/4)],
+		[Math.PI, Math.PI/2],
+		[Math.PI * (5/4), Math.PI/4],
+		[Math.PI * (6/4), Math.PI/4]
+	].map(arr => {
+		let [x,y,z] = BoneUtils.pointOnSphere(4, arr[0], arr[1]);
+		return new THREE.Vector3(x, y, z);
+	}));
+	// var tp = [new THREE.Vector3(0, 0, 0)];
+	// const pi = Math.PI;
+	// for (let i = 0;i < 7;i++) {
+	// 	let theta = i * (pi/4);
+	// 	let phi = (pi/2) + (i * pi * (1/8));
+	// 	let [x, y, z] = BoneUtils.pointOnSphere(4, theta, phi);
+	// 	tp.push(new THREE.Vector3(x, y, z));
+	// }
+	line3 = BoneUtils.SimpleLine(tp, 0x00ff00);
+	scene.add(line3);
+	
+	// fog must be added to scene before first render
+    scene.fog = new THREE.FogExp2( 0x9999ff, 0.00025 );
+    
+    loop();
+
+	// inputs / debug
+	document.getElementById("rotY").addEventListener("input", (e) => {
+		mesh3.rotation.y = e.target.value;
+		line.rotation.y = e.target.value;
+		line2.rotation.y = e.target.value;
+		line3.rotation.y = e.target.value;
+	});
+    document.getElementById("rotX").addEventListener("input", e => {
+		mesh3.rotation.x = e.target.value;
+		line.rotation.x = e.target.value;
+		line2.rotation.x = e.target.value;
+		line3.rotation.x = e.target.value;
+	});
+}
+
+// main loop
+async function loop () {
+    while(true) {
+        let t2 = performance.now();
+        let p = new Promise(resolve => requestAnimationFrame(t1 => {
+            // time delta
+            let dt = (t1 - t2)/1000;
+            // do not interpolate latency greater than 1 second
+            if (dt > 1) {
+                resolve();
+                return;
+            }
+
+            renderer.render(scene, camera);
+
+            domNodes.fps.innerText = 1/dt;
+            resolve();
+        }));
+        
+        await p;
+    }
+}
+
+</script>
+
+<!-- 
+	simple goals
+	- roll mesh tube - done
+	- cap 1 end - minor issues, done
+	- stitch edges (avoid duplicate vertices) - ugly, but done
+	- generate cylinder by connecting faces between 2 discs based on start & end points - done
+	- make ability to specify resolution of cylinder, further parameterize generation functions
+		- quaternion math so bones can be at an arbitrary angle
+		- refactor loops to support arbitrary resolutions
+-->

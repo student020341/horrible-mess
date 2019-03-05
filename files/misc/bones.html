@@ -1,0 +1,432 @@
+<style>
+	body {
+		margin: 0;
+	}
+</style>
+<div>
+    <div id="container"></div>
+	<p>FPS:<span id="fps"></span></p>
+	<div>
+		<label>Rotation Y axis</label>
+		<input type="range" min="0" max="6.28319" value="0" step="0.1" id="rotY" />
+	</div>
+	<div>
+		<label>Rotation X axis</label>
+		<input type="range" min="0" max="6.28319" value="0" step="0.1" id="rotX" />
+	</div>
+</div>
+<script src="/misc/file/three.min.js"></script>
+<script>
+
+let domNodes = {
+    fps: document.getElementById("fps"),
+    container: document.getElementById("container"),
+};
+
+var scene, camera, renderer, controls, stats, mesh;
+var clock = new THREE.Clock();
+var cube;
+
+// initialization
+init();
+function init() 
+{
+	/*
+	NOTE: most of this code is boilerplate stripped from a hello world example to get the lights, rendering, materials, etc.
+	*/
+	scene = new THREE.Scene();
+	
+	// set the view size in pixels (custom or according to window size)
+	var SCREEN_WIDTH = 400, SCREEN_HEIGHT = 300;	
+	// camera attributes
+	var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 1, FAR = 2000;
+	// set up camera
+	camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
+	// add the camera to the scene
+	scene.add(camera);
+	camera.position.set(0,17,50);
+	// camera.position.set(3,8,16.5);
+	
+	// create and start the renderer; choose antialias setting.
+	renderer = new THREE.WebGLRenderer( {antialias:true} );
+	
+	renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+	
+	// attach renderer to the container div
+	domNodes.container.appendChild( renderer.domElement );
+	
+	// create a light
+	var ambientLight = new THREE.AmbientLight(0x111111);
+	scene.add(ambientLight);	
+
+	mesh = makeHand();
+	scene.add(mesh);
+
+	let finger = makeFinger();
+	scene.add(finger);
+
+	let segment = makeSegment();
+	scene.add(segment);
+	
+	// fog must be added to scene before first render
+    scene.fog = new THREE.FogExp2( 0x9999ff, 0.00025 );
+    
+    loop();
+
+	// inputs / debug
+	document.getElementById("rotY").addEventListener("input", (e) => {
+		mesh.rotation.y = e.target.value;
+		finger.rotation.y = e.target.value;
+	});
+	document.getElementById("rotX").addEventListener("input", e => {
+		mesh.rotation.x = e.target.value;
+		finger.rotation.x = e.target.value;
+	});
+}
+
+function makeHand () {
+
+	let size = 1024;
+	let cell = size/8;
+	let p = cell / size;
+
+	let simple = new THREE.Geometry();
+
+	// load texture
+	let texture = new THREE.TextureLoader().load("/misc/file/checker2.png");
+
+	// vertices
+	simple.vertices.push(
+		// back / top of hand, 0-3
+		new THREE.Vector3(0, 0, 0), // 0 - bottom left
+		new THREE.Vector3(10, 0, 0), // 1 - bottom right
+		new THREE.Vector3(12, 10, 0), // 2 - top right
+		new THREE.Vector3(-1, 12, 0), // 3 - top left
+		// right side, 4-5
+		new THREE.Vector3(10, 0, -5), // 4 - bottom left
+		new THREE.Vector3(12, 10, -5), // 5 - bottom right
+		// left side, 6-7
+		new THREE.Vector3(0, 0, -5), // 6 - bottom right
+		new THREE.Vector3(-1, 12, -5), // 7 - bottom left
+	);
+
+	// faces / tris
+	simple.faces.push(
+		// back / top
+		new THREE.Face3(0, 1, 2),
+		new THREE.Face3(0, 2, 3),
+		// right side
+		new THREE.Face3(1, 4, 5),
+		new THREE.Face3(1, 5, 2),
+		// left side
+		new THREE.Face3(6, 0, 3),
+		new THREE.Face3(6, 3, 7),
+		// palm / bottom - uses left and right side vertices!
+		// right side, bottom left ; left side, bottom right ; left side, bottom left
+		new THREE.Face3(4, 6, 7),
+		new THREE.Face3(4, 7, 5),
+		// wrist - ls.br, 1, rs.bl
+		new THREE.Face3(6, 4, 1),
+		new THREE.Face3(6, 1, 0),
+		// knuckle - rs.br, ls.bl, 3
+		new THREE.Face3(5, 7, 3),
+		new THREE.Face3(5, 3, 2),
+	);
+	simple.computeFaceNormals();
+
+	// uv coordinates
+	simple.faceVertexUvs[0] = [
+		// top of hand - B2
+		[
+			new THREE.Vector2(p * 1, 1 - (p * 2)),
+			new THREE.Vector2(p * 2, 1 - (p * 2)),
+			new THREE.Vector2(p * 2, 1 - p),
+		],
+		[
+			new THREE.Vector2(p * 1, 1 - (p*2)),
+			new THREE.Vector2(p * 2, 1 - p),
+			new THREE.Vector2(p * 1, 1 - p),
+		],
+		// right side - B3
+		[
+			new THREE.Vector2(p * 2, 1 - p*2),
+			new THREE.Vector2(p * 3, 1 - p*2),
+			new THREE.Vector2(p * 3, 1 - p),
+		],
+		[
+			new THREE.Vector2(p * 2, 1 - p*2),
+			new THREE.Vector2(p * 3, 1 - p),
+			new THREE.Vector2(p * 2, 1 - p),
+		],
+		// left side - B1
+		[
+			new THREE.Vector2(0, 1 - p*2),
+			new THREE.Vector2(p, 1 - p*2),
+			new THREE.Vector2(p, 1 - p),
+		],
+		[
+			new THREE.Vector2(0, 1 - p*2),
+			new THREE.Vector2(p, 1 - p),
+			new THREE.Vector2(0, 1 - p),
+		],
+		// palm - A1
+		[
+			new THREE.Vector2(0, 1 - p),
+			new THREE.Vector2(p, 1 - p),
+			new THREE.Vector2(p, 1),
+		],
+		[
+			new THREE.Vector2(0, 1 - p),
+			new THREE.Vector2(p, 1),
+			new THREE.Vector2(0, 1),
+		],
+		// wrist - H1
+		[
+			new THREE.Vector2(0, 0),
+			new THREE.Vector2(p, 0),
+			new THREE.Vector2(p, p),
+		],
+		[
+			new THREE.Vector2(0, 0),
+			new THREE.Vector2(p, p),
+			new THREE.Vector2(0, p),
+		],
+		// knuckle? - H2
+		[
+			new THREE.Vector2(p, 0),
+			new THREE.Vector2(p*2, 0),
+			new THREE.Vector2(p*2, p),
+		],
+		[
+			new THREE.Vector2(p, 0),
+			new THREE.Vector2(p*2, p),
+			new THREE.Vector2(p, p),
+		]
+	];
+
+	simple.uvsNeedUpdate = true;
+
+	// let mat = new THREE.MeshBasicMaterial( { color: 0x00FF00 } );
+	let mat = new THREE.MeshBasicMaterial( { map: texture } );
+
+	return new THREE.Mesh(simple, mat);
+};
+
+function makeFinger () {
+	let size = 1024;
+	let cell = size/8;
+	let p = cell / size;
+
+	let simple = new THREE.Geometry();
+
+	// load texture
+	let texture = new THREE.TextureLoader().load("/misc/file/checker2.png");
+
+	// vertices
+	simple.vertices.push(
+		// top, 0-3
+		new THREE.Vector3(-1, 13, 0), // 0 - bottom left 
+		new THREE.Vector3(3, 13, 0), // 1 - bottom right 
+		new THREE.Vector3(3, 20, 0), // 2 - top right 
+		new THREE.Vector3(-1, 20, 0), // 3 - top left 
+	);
+
+	// faces / tris
+	simple.faces.push(
+		// back / top
+		new THREE.Face3(1, 2, 0),
+		new THREE.Face3(3, 0, 2),
+	);
+
+	// uv coordinates
+	simple.faceVertexUvs[0] = [
+		// top - H1
+		[
+			new THREE.Vector2(p, 0),
+			new THREE.Vector2(p, p),
+			new THREE.Vector2(0, 0)
+		],
+		[
+			new THREE.Vector2(0, p),
+			new THREE.Vector2(0, 0),
+			new THREE.Vector2(p, p)
+		],
+	];
+
+	// edge extrusion test
+	// reference to next edge to extrude from
+	let lastEdge = [3, 2];
+	let rad30deg = 0.523599;
+	let radius = 4;
+	// extrude 3 times
+	for (let i = 0;i < 5;i++) {
+		let newPoints = [ simple.vertices.length, simple.vertices.length+1 ];
+		let edgeVerts = [ simple.vertices[ lastEdge[0] ], simple.vertices[ lastEdge[1] ] ];
+		// extrude up from last edge
+
+		let deg = -rad30deg * (i + 1);
+		let z = (radius * Math.sin(deg)) + edgeVerts[0].z;
+		let y = (radius * Math.cos(deg)) + edgeVerts[0].y;
+
+		simple.vertices.push(
+			// top
+			new THREE.Vector3( edgeVerts[0].x, y, z ),// new top left
+			new THREE.Vector3( edgeVerts[1].x, y, z ),// new top right
+		);
+
+		// new face
+		simple.faces.push(
+			// bottom right triangle
+			new THREE.Face3(lastEdge[0], lastEdge[1], newPoints[1]),
+			// top left triangle
+			new THREE.Face3(lastEdge[0], newPoints[1], newPoints[0]),
+		);
+
+		let uvOffset = p * (i+1);
+		// new UVs
+		simple.faceVertexUvs[0].push(
+			// bottom right triangle
+			[
+				new THREE.Vector2(0 + uvOffset, 0),
+				new THREE.Vector2(p + uvOffset, 0),
+				new THREE.Vector2(p + uvOffset, p)
+			],
+			// top left triangle
+			[
+				new THREE.Vector2(0 + uvOffset, 0),
+				new THREE.Vector2(p + uvOffset, p),
+				new THREE.Vector2(0 + uvOffset, p)
+			],
+		);
+
+		// set lastEdge for next iteration
+		lastEdge = newPoints;
+	}
+
+	// update normals & uvs
+	simple.computeFaceNormals();
+	simple.uvsNeedUpdate = true;
+
+	// let mat = new THREE.MeshBasicMaterial( { color: 0x00FF00 } );
+	let mat = new THREE.MeshBasicMaterial( { map: texture } );
+
+	return new THREE.Mesh(simple, mat);
+}
+
+function makeSegment () {
+	// uv variables
+	let size = 1024;
+	let cell = size/8;
+	let p = cell / size;
+
+	let simple = new THREE.Geometry();
+
+	// load texture
+	let texture = new THREE.TextureLoader().load("/misc/file/checker2.png");
+
+	// vertices
+	simple.vertices.push(
+		// open base, 0-3
+		new THREE.Vector3(-10, 0, 0), // 0 - bottom left 
+		new THREE.Vector3(-2, 0, 0), // 1 - bottom right 
+		new THREE.Vector3(-2, 8, 0), // 2 - top right 
+		new THREE.Vector3(-10, 8, 0), // 3 - top left 
+	);
+
+	// faces / tris
+	simple.faces.push(
+		// back / top
+		new THREE.Face3(0, 1, 2),
+		new THREE.Face3(0, 2, 3),
+	);
+
+	// uv coordinates
+	simple.faceVertexUvs[0] = [
+		// top - H1
+		[
+			new THREE.Vector2(0, 0),
+			new THREE.Vector2(p, 0),
+			new THREE.Vector2(p, p)
+		],
+		[
+			new THREE.Vector2(0, 0),
+			new THREE.Vector2(p, p),
+			new THREE.Vector2(0, p)
+		],
+	];
+
+	// update normals & uvs
+	simple.computeFaceNormals();
+	simple.uvsNeedUpdate = true;
+
+	// let mat = new THREE.MeshBasicMaterial( { color: 0x00FF00 } );
+	let mat = new THREE.MeshBasicMaterial( { map: texture } );
+
+	return new THREE.Mesh(simple, mat);
+}
+
+// main loop
+async function loop () {
+    while(true) {
+        let t2 = performance.now();
+        let p = new Promise(resolve => requestAnimationFrame(t1 => {
+            // time delta
+            let dt = (t1 - t2)/1000;
+            // do not interpolate latency greater than 1 second
+            if (dt > 1) {
+                resolve();
+                return;
+            }
+
+			// rotate phase 2
+			// mesh.rotateY(-dt * 0.5);
+
+            renderer.render(scene, camera);
+
+            domNodes.fps.innerText = 1/dt;
+            resolve();
+        }));
+        
+        await p;
+    }
+}
+
+</script>
+
+<!-- 
+	plans
+	phase 1: simple 2d hand render - done
+		- boiler plate code to setup the scene, geometry, lighting, etc - done
+		- work out basic groups of vertices and faces - done
+
+	phase 2: 3d render of hand and finger, separated
+		- create functions to handle generation of hand and finger
+		- simple uv texturing
+		- non hard coded version
+
+	phase 3: simple bone class
+		- parent/child rotations and positions
+		+ use threejs parent/child: https://stackoverflow.com/questions/48763403/why-does-child-object-not-move-with-parent-in-three-js 
+		- be able to manage an already generate shape
+
+	phase 4: bones that can generate and manage simple shapes
+		- generate skin
+		- manage contraction and connection points
+
+	phase 5: hand that can generate/attach a finger
+		- success when it can make a complete dynamic hand
+
+	phase 6: high level signals / commands
+		- arm tells hand to grab, hand tells fingers to contract
+		- fingers ask hand to get closer to object, hand asks arm to get closer to object
+
+	extras
+		update flags for dynamic geometry
+			colors: colorsNeedUpdate = true
+			faces: elementsNeedUpdate = true
+			uvs: uvsNeedUpdate = true
+			vertices: verticesNeedUpdate = true
+			materials: groupsNeedUpdate = true
+			normals: normalsNeedUpdate = true and/or computeFaceNormals
+			dynamic flag removed in r66
+-->
