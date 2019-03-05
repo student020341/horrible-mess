@@ -184,6 +184,12 @@ func argsAndConfig () {
 }
 
 func doPluginStuff() {
+	// ensure the modules folder exists since a fresh git pull won't have it
+	err := exec.Command("mkdir", "-p", "modules").Run()
+	if err != nil {
+		panic(err)
+	}
+
 	// have --build flag
 	var files []string
 	if progArgs["build"].(bool) {
