@@ -12,13 +12,21 @@
 	<div>
 		<label>Rotation X axis</label>
 		<input type="range" min="0" max="6.28319" value="0" step="0.1" id="rotX" />
-	</div>
+    </div>
+    <div>
+        <label>axis guide</label>
+        <input id='guide' type="checkbox" /><br>
+        <label>axis normals</label>
+        <input id='normals' type="checkbox"><br>
+    </div>
 </div>
 <script src="/misc/file/three.min.js"></script>
 <script>
 
 let domNodes = {
     container: document.getElementById("container"),
+    guide: document.getElementById("guide"),
+    normals: document.getElementById("normals"),
 };
 
 // threejs stuff
@@ -26,6 +34,10 @@ var scene, camera, renderer;
 // point debugs
 const vec3 = THREE.Vector3;
 var lines = [];
+var rotations = { x: 0, y: 0 };
+// 
+var resolution = 8;
+var radiansPer = (Math.PI*2)/resolution;
 
 // initialization
 init();
@@ -55,18 +67,7 @@ function init()
 	// attach renderer to the container div
 	domNodes.container.appendChild( renderer.domElement );
 
-	// line representing target rotation
-	lines.push(simpleLine([
-		new vec3(0, 0, 0),
-		new vec3(5, 10, 10)
-    ]));
-
-    let resolution = 8;
-    let radiansPer = (Math.PI*2)/resolution;
-    createStandardLines(lines, resolution, radiansPer);
-    horribleGuessLines(lines, resolution, radiansPer);
-    
-    lines.forEach(line => scene.add(line));
+    rebuildLines();
 	
 	// fog must be added to scene before first render
     scene.fog = new THREE.FogExp2( 0x9999ff, 0.00025 );
@@ -75,11 +76,39 @@ function init()
 
 	// inputs / debug
 	document.getElementById("rotY").addEventListener("input", (e) => {
-        lines.forEach(line => line.rotation.y = e.target.value);
+        rotations.y = e.target.value;
+        applyRotations();
 	});
     document.getElementById("rotX").addEventListener("input", e => {
-        lines.forEach(line => line.rotation.x = e.target.value);
+        rotations.x = e.target.value;
+        applyRotations();
 	});
+    [domNodes.guide, domNodes.normals].forEach(element => element.addEventListener("change", rebuildLines));
+}
+
+function applyRotations () {
+    lines.forEach(line => {
+        line.rotation.x = rotations.x;
+        line.rotation.y = rotations.y;
+    });
+}
+
+function rebuildLines () {
+    lines.forEach(line => scene.remove(line));
+    lines = [];
+
+    if (domNodes.guide.checked) {
+        createStandardLines();
+    }
+
+    if (domNodes.normals.checked) {
+        createStandardNormals();
+    }
+
+    horribleGuessLines();
+    
+    lines.forEach(line => scene.add(line));
+    applyRotations();
 }
 
 function simpleLine (points, color = 0xffffff) {
@@ -101,65 +130,74 @@ function pointOnSphere (radius, theta, phi) {
     return [x, y, z].map(f => parseFloat(f.toFixed(8)));
 }
 
-function createStandardLines (lines, resolution, radiansPer) {
+function createStandardLines () {
+    var points = [];
     // shape facing x+
-    (() => {
-        let points = [];
-        for (let i = 0;i < resolution;i++) {
-            let theta = -Math.PI/2;
-            let phi = radiansPer * i;
+    for (let i = 0;i < resolution;i++) {
+        let theta = -Math.PI/2;
+        let phi = radiansPer * i;
 
-            let [x, y, z] = pointOnSphere(4, theta, phi);
-            
-            points.push(new vec3(x, y, z));
-        }
-        points.push(points[0]);
-        lines.push(simpleLine(points, 0xff0000));
-        lines.push(simpleLine([
-            new vec3(0, 0, 0),
-            new vec3(10, 0, 0)
-        ], 0xff0000));
-    })();
+        let [x, y, z] = pointOnSphere(4, theta, phi);
+        
+        points.push(new vec3(x, y, z));
+    }
+    points.push(points[0]);
+    lines.push(simpleLine(points, 0xff0000));
 
     // shape facing y+
-    (() => {
-        let points = [];
-        for (let i = 0;i < resolution;i++) {
-            let theta = 0;
-            let phi = radiansPer * i;
+    points = [];
+    for (let i = 0;i < resolution;i++) {
+        let theta = 0;
+        let phi = radiansPer * i;
 
-            let [x, y, z] = pointOnSphere(4, theta, phi);
-            
-            points.push(new vec3(x, y, z));
-        }
-        points.push(points[0]);
-        lines.push(simpleLine(points, 0x00ff00));
-        lines.push(simpleLine([
-            new vec3(0, 0, 0),
-            new vec3(0, 10, 0)
-        ], 0x00ff00));
-    })();
+        let [x, y, z] = pointOnSphere(4, theta, phi);
+        
+        points.push(new vec3(x, y, z));
+    }
+    points.push(points[0]);
+    lines.push(simpleLine(points, 0x00ff00));
 
     // shape facing z+
-    (() => {
-        let points = [];
-        for (let i = 0;i < resolution;i++) {
-            let theta = radiansPer * i;
-            let phi = Math.PI/2;
+    points = [];
+    for (let i = 0;i < resolution;i++) {
+        let theta = radiansPer * i;
+        let phi = Math.PI/2;
 
-            let [x, y, z] = pointOnSphere(4, theta, phi);
-            points.push(new vec3(x, y, z));
-        }
-        points.push(points[0]);
-        lines.push(simpleLine(points, 0x0000ff));
-        lines.push(simpleLine([
-            new vec3(0, 0, 0),
-            new vec3(0, 0, 10)
-        ], 0x0000ff));
-    })();
+        let [x, y, z] = pointOnSphere(4, theta, phi);
+        points.push(new vec3(x, y, z));
+    }
+    points.push(points[0]);
+    lines.push(simpleLine(points, 0x0000ff));
 }
 
-function horribleGuessLines (lines, resolution, radiansPer) {
+function createStandardNormals () {
+    // x+
+    lines.push(simpleLine([
+        new vec3(0, 0, 0),
+        new vec3(10, 0, 0)
+    ], 0xff0000));
+
+    // y+
+    lines.push(simpleLine([
+        new vec3(0, 0, 0),
+        new vec3(0, 10, 0)
+    ], 0x00ff00));
+
+    // z+
+    lines.push(simpleLine([
+        new vec3(0, 0, 0),
+        new vec3(0, 0, 10)
+    ], 0x0000ff));
+}
+
+function horribleGuessLines () {
+
+    // line representing target rotation
+	lines.push(simpleLine([
+		new vec3(0, 0, 0),
+		new vec3(5, 10, 10)
+    ]));
+
     // iterate theta and phi because reasons
     (() => {
         let points = [];
