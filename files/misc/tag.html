@@ -1,0 +1,499 @@
+<style>
+    body {
+        margin: 0;
+    }
+
+    canvas {
+        outline: 1px solid black;
+        width: 800;
+        height: 600;
+    }
+</style>
+<div>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <div>
+        <p>FPS: <span id="fps"></span></p>
+        <p>Discarded Frames: <span id="lag">0</span></p>
+    </div>
+</div>
+<script>
+
+/*
+stuff
+    left mouse - time stuff, mouse down to start path, release mouse to execute?
+    right mouse - dash
+
+*/
+
+var stuff = {};
+
+init();
+function init() {
+    // vars and bindings and stuff
+    stuff.canvas = document.getElementById("canvas");
+    stuff.context = canvas.getContext("2d");
+    stuff.fps = document.getElementById("fps");
+    stuff.cLag = document.getElementById("lag");
+
+    stuff.stats = {
+        frameSamples: [],
+        fps: 0
+    };
+
+    stuff.speeds = {
+        walk: 500, // 8 pixels per second
+        focus: 700, // 11 pixels per second
+        dash: 900, // 15 pixels per second
+    };
+
+    stuff.limits = {
+        stamina: 0.5,
+        focus: 5
+    };
+
+    // resource regenerators
+    stuff.staggers = {
+        stamina: null,
+        focus: null,
+    };
+
+    // player stuff
+    stuff.player = {
+        // player id
+        id: null,
+        // websocket
+        ws: null,
+        // current position
+        position: {x: 0, y: 0},
+        // target position
+        target: {x: 0, y: 0},
+        radius: 16,
+        // hardware lag
+        cLag: 0,
+        // movement state
+        state: "walk",
+        // path for special thing
+        timePath: [],
+        // is this player it?
+        tagged: false,
+        stamina: stuff.limits.stamina,
+        focus: stuff.limits.stamina
+    };
+
+    // holds left (0) and right (2) pressed state
+    stuff.mouseState = {};
+
+    // event bindings
+    playerBinding();
+
+    // level
+    setMaps();
+    stuff.walls = stuff.levels[1];
+
+    loop();
+}
+
+function playerMouseLogic (event) {
+    const {clientX: x, clientY: y} = event;
+    stuff.player.target = {x: x, y: y};
+}
+
+function playerBinding () {
+    // disable right click
+    document.addEventListener("contextmenu", e => {
+        e.preventDefault();
+    })
+    // add mouse move
+    stuff.canvas.addEventListener("mousemove", playerMouseLogic);
+    // mouse buttons
+    document.addEventListener("mousedown", e => {
+        e.preventDefault();
+        e.stopPropagation();
+        stuff.mouseState[e.button] = 1;
+    });
+    document.addEventListener("mouseup", e => {
+        e.preventDefault();
+        e.stopPropagation();
+        stuff.mouseState[e.button] = 0;
+    });
+}
+
+// a random algorithm taken from stack overflow
+function doesLineInterceptCircle(A, B, C, radius) {
+    var dist;
+    const v1x = B.x - A.x;
+    const v1y = B.y - A.y;
+    const v2x = C.x - A.x;
+    const v2y = C.y - A.y;
+    // get the unit distance along the line of the closest point to
+    // circle center
+    const u = (v2x * v1x + v2y * v1y) / (v1y * v1y + v1x * v1x);
+
+    // if the point is on the line segment get the distance squared
+    // from that point to the circle center
+    if(u >= 0 && u <= 1){
+        dist  = (A.x + v1x * u - C.x) ** 2 + (A.y + v1y * u - C.y) ** 2;
+    } else {
+        // if closest point not on the line segment
+        // use the unit distance to determine which end is closest
+        // and get dist square to circle
+        dist = u < 0 ?
+                (A.x - C.x) ** 2 + (A.y - C.y) ** 2 :
+                (B.x - C.x) ** 2 + (B.y - C.y) ** 2;
+    }
+    return dist < radius * radius;
+}
+
+function getDirection (p1, p2, length) {
+    let dx = p2.x - p1.x;
+    let dy = p2.y - p1.y;
+
+    length = isNaN(length) ? getDist(p1, p2) : length;
+
+    return { x: dx/length, y: dy/length };
+}
+
+function getDist (p1, p2) {
+    let dx = p2.x - p1.x;
+    let dy = p2.y - p1.y;
+    return Math.sqrt( (dx ** 2) + (dy ** 2) );
+}
+
+function draw () {
+    const c = stuff.context;
+
+    // clear area
+    c.clearRect(0, 0, 800, 600)
+
+    // draw player
+    c.beginPath();
+    c.arc(stuff.player.position.x, stuff.player.position.y, stuff.player.radius, 0, Math.PI*2);
+    c.stroke();
+
+    // draw player status
+    // stamina bar!
+    if (stuff.player.stamina != stuff.limits.stamina) {
+        c.fillStyle = `rgba(0, 128, 0, 0.8)`;
+        let w = (stuff.player.stamina / stuff.limits.stamina) * 40;
+        w = w < 4 ? 4 : w;
+        c.fillRect(stuff.player.position.x-16, stuff.player.position.y-30, w, 10);
+    }
+
+    // focus / time bar!
+    c.fillColor = `black`;
+
+    // draw level geometry
+    stuff.walls.forEach(line => {
+        c.beginPath();
+        c.moveTo(line.p1.x, line.p1.y);
+        c.lineTo(line.p2.x, line.p2.y);
+        c.stroke();
+    });
+
+    // draw effects
+}
+
+// mouse buttons and move state
+function mouseStep (dt) {
+    // vars!
+    const wantToDash = stuff.mouseState[2];
+    const wantToFocus = stuff.mouseState[0];
+    const canDash = stuff.player.stamina > 0;
+    const canFocus = stuff.player.focus > 0;
+    const currentState = stuff.player.state;
+
+    // transition to dash
+    if (canDash && wantToDash && currentState != "dash") {
+        stuff.player.state = "dash";
+        // stop current stamina regen if player resumes dash
+        if (stuff.staggers.stamina) {
+            clearTimeout(stuff.staggers.stamina);
+        }
+    }
+
+    // reduce player stamina if they are dashing
+    if (stuff.player.state == "dash") {
+        stuff.player.stamina -= dt;
+    }
+
+    // end dash
+    let shouldEndDash = stuff.player.stamina <= 0 && stuff.player.state == "dash";
+    let stoppedDashing = !wantToDash && stuff.player.state == "dash";
+    if ( shouldEndDash || stoppedDashing ) {
+        stuff.player.state = "walk";
+        // clear any existing stamina regen
+        if (stuff.staggers.stamina) {
+            clearTimeout(stuff.staggers.stamina);
+        }
+        // restore stamina in resource seconds + 1
+        stuff.staggers.stamina = setTimeout(() => {
+            stuff.player.stamina = stuff.limits.stamina;
+        }, (stuff.limits.stamina + 1)*1000);
+    }
+
+    // transition to focus
+    if (wantToFocus && stuff.player.state != "focus") {
+        stuff.player.state = "focus";
+    }
+
+    if (stuff.player.state == "focus") {
+        stuff.player.focus -= dt;
+    }
+
+    // end focus, forced
+    const _cancelFocusStagger = () => {
+        if (stuff.staggers.focus) {
+            clearTimeout(stuff.staggers.focus);
+        }
+    };
+    const _beginFocusStagger = () => {
+        _cancelFocusStagger();
+        stuff.staggers.focus = setTimeout(() => {}, stuff.limits.focus + 1);
+    };
+    if (stuff.player.state == "focus" && stuff.player.focus <= 0 && wantToFocus) {
+        stuff.player.state = "walk";
+        _beginFocusStagger();
+    }
+}
+
+function step (dt) {
+
+    // state logic, mouse button logic
+    mouseStep(dt);
+
+    const pos = stuff.player.position;
+    const target = stuff.player.target;
+
+    let dist = getDist(pos, target);
+    let dir = getDirection(pos, target, dist);
+
+    // invalid target or 0 length
+    if (isNaN(dir.x) || isNaN(dir.y)) {
+        return;
+    }
+
+    let newPos = Object.assign({}, pos);
+    if (dist <= stuff.player.radius) { return; }
+    let mx = dir.x * dt * stuff.speeds[stuff.player.state];
+    let my = dir.y * dt * stuff.speeds[stuff.player.state];
+    // constrain maximmum movement deltas to 15 units - minor glitch the framerate doesn't always account for
+    if (Math.abs(mx) > 15) {
+        mx = Math.sign(mx) * 15;
+    }
+    if (Math.abs(my) > 15) {
+        my = Math.sign(my) * 15;
+    }
+    newPos.x += mx;
+    newPos.y += my;
+    
+
+    // collision with level
+    let collisionWithLevel = [
+        // just X
+        stuff.walls.some(line => doesLineInterceptCircle(line.p1, line.p2, {x: newPos.x, y: pos.y}, stuff.player.radius)),
+        // just Y
+        stuff.walls.some(line => doesLineInterceptCircle(line.p1, line.p2, {x: pos.x, y: newPos.y}, stuff.player.radius)),
+        // X and Y
+        // stuff.walls.some(line => doesLineInterceptCircle(line.p1, line.p2, newPos, stuff.player.radius)),
+    ];
+
+    if (!collisionWithLevel[0] && !collisionWithLevel[1]) {
+        pos.x = newPos.x;
+        pos.y = newPos.y;
+    } else if (collisionWithLevel[0] && !collisionWithLevel[1]) {
+        pos.y = newPos.y;
+    } else if (!collisionWithLevel[0] && collisionWithLevel[1]) {
+        pos.x = newPos.x;
+    }
+}
+
+async function loop () {
+    const lowerLimit = 1/60;
+    while(true) {
+        let t2 = performance.now();
+        let p = new Promise(resolve => requestAnimationFrame(t1 => {
+            // time delta
+            let dt = (t1 - t2)/1000;
+            // I don't know if the browser is lying or what, but cap to 60fps
+            if (dt < lowerLimit) {
+                dt = lowerLimit;
+            }
+            updateFrameSamples(dt);
+            stuff.fps.innerText = stuff.stats.fps;
+            // do not interpolate latency greater than 1 second
+            if (dt > 1) {
+                stuff.player.cLag++;
+                stuff.cLag.innerText = stuff.player.cLag;
+                resolve();
+                return;
+            }
+
+            draw();
+            step(dt);
+            
+            resolve();
+        }));
+        
+        await p;
+    }
+}
+
+// ugly stuff beyond this point
+
+function updateFrameSamples (dt) {
+    stuff.stats.frameSamples.push(dt);
+    if (stuff.stats.frameSamples.length > 60) {
+        stuff.stats.frameSamples.shift();
+    }
+    stuff.stats.fps = (1/(stuff.stats.frameSamples.reduce((sum, num) => sum+num, 0) / stuff.stats.frameSamples.length)).toPrecision(5);
+}
+
+function setMaps () {
+    stuff.levels = [
+        // stage 1 - big empty area
+        [],
+        // stage 2 - plus in the middle of the stage
+        [
+            {
+                p1: {x: 200, y: 300},
+                p2: {x: 600, y: 300}
+            },
+            {
+                p1: {x: 400, y: 200},
+                p2: {x: 400, y: 400} 
+            }
+        ],
+        // stage 3 - complicated maze thing
+        [
+            // center plus
+            {
+                p1: {x: 200, y: 300},
+                p2: {x: 600, y: 300}
+            },
+            {
+                p1: {x: 400, y: 200},
+                p2: {x: 400, y: 400} 
+            },
+            // line left of center plus
+            {
+                p1: {x: 200, y: 340},
+                p2: {x: 360, y: 340}
+            },
+            {
+                p1: {x: 360, y: 340},
+                p2: {x: 360, y: 400}
+            },
+            // line right of center plus
+            {
+                p1: {x: 440, y: 260},
+                p2: {x: 600, y: 260}
+            },
+            {
+                p1: {x: 440, y: 260},
+                p2: {x: 440, y: 200}
+            },
+            // top right corner thing
+            {
+                p1: {x: 500, y: 50},
+                p2: {x: 500, y: 200}
+            },
+            {
+                p1: {x: 500, y: 200},
+                p2: {x: 750, y: 200}
+            },
+            // bottom left x
+            {
+                p1: {x: 50, y: 400},
+                p2: {x: 200, y: 550}
+            },
+            {
+                p1: {x: 200, y: 400},
+                p2: {x: 50, y: 550}
+            },
+            // top left corner maze
+            {
+                p1: {x: 50, y: 50},
+                p2: {x: 100, y: 50}
+            },
+            {
+                p1: {x: 150, y: 50},
+                p2: {x: 300, y: 50}
+            },
+            {
+                p1: {x: 50, y: 50},
+                p2: {x: 50, y: 260}
+            },
+            {
+                p1: {x: 50, y: 260},
+                p2: {x: 250, y: 260}
+            },
+            {
+                p1: {x: 300, y: 260},
+                p2: {x: 300, y: 50}
+            },
+            // bottom right corner maze
+            {
+                p1: {x: 750, y: 400},
+                p2: {x: 750, y: 550}
+            },
+            {
+                p1: {x: 450, y: 400},
+                p2: {x: 450, y: 550}
+            },
+            {
+                p1: {x: 450, y: 400},
+                p2: {x: 570, y: 400}
+            },
+            {
+                p1: {x: 630, y: 400},
+                p2: {x: 750, y: 400}
+            },
+            {
+                p1: {x: 500, y: 450},
+                p2: {x: 700, y: 450}
+            },
+            {
+                p1: {x: 500, y: 450},
+                p2: {x: 500, y: 500}
+            },
+            {
+                p1: {x: 700, y: 450},
+                p2: {x: 700, y: 475}
+            },
+            {
+                p1: {x: 700, y: 475},
+                p2: {x: 750, y: 475}
+            },
+            {
+                p1: {x: 500, y: 540},
+                p2: {x: 500, y: 550}
+            },
+            {
+                p1: {x: 450, y: 550},
+                p2: {x: 675, y: 550}
+            },
+            {
+                p1: {x: 725, y: 550},
+                p2: {x: 750, y: 550}
+            },
+            {
+                p1: {x: 500, y: 540},
+                p2: {x: 540, y: 540}
+            },
+            {
+                p1: {x: 540, y: 540},
+                p2: {x: 540, y: 490}
+            },
+            {
+                p1: {x: 580, y: 450},
+                p2: {x: 580, y: 510}
+            },
+            {
+                p1: {x: 650, y: 550},
+                p2: {x: 650, y: 500}
+            },
+        ]
+    ];
+}
+
+</script>
