@@ -14,14 +14,17 @@
     <div>
         <p>FPS: <span id="fps"></span></p>
         <p>Discarded Frames: <span id="lag">0</span></p>
+        <p id="debug"></p>
     </div>
 </div>
 <script>
 
 /*
 stuff
-    left mouse - time stuff, mouse down to start path, release mouse to execute?
-    right mouse - dash
+    left mouse - time stuff, mouse down to start path, release mouse to execute? - working well enough
+    right mouse - dash - working well enough
+    networking - current
+    tag - to be done last
 
 */
 
@@ -34,15 +37,18 @@ function init() {
     stuff.context = canvas.getContext("2d");
     stuff.fps = document.getElementById("fps");
     stuff.cLag = document.getElementById("lag");
+    stuff.debug = document.getElementById("debug");
 
     stuff.stats = {
         frameSamples: [],
-        fps: 0
+        fps: 0,
+        debug: {}
     };
 
     stuff.speeds = {
         walk: 500, // 8 pixels per second
-        focus: 700, // 11 pixels per second
+        focus: 0,
+        fixed: 700, // 11 pixels per second
         dash: 900, // 15 pixels per second
     };
 
@@ -50,6 +56,9 @@ function init() {
         stamina: 0.5,
         focus: 5
     };
+
+    // time freeze thing
+    stuff.gameFrozen = () => stuff.player.state == "focus";
 
     // resource regenerators
     stuff.staggers = {
@@ -77,7 +86,7 @@ function init() {
         // is this player it?
         tagged: false,
         stamina: stuff.limits.stamina,
-        focus: stuff.limits.stamina
+        focus: stuff.limits.focus
     };
 
     // holds left (0) and right (2) pressed state
@@ -180,7 +189,39 @@ function draw () {
     }
 
     // focus / time bar!
-    c.fillColor = `black`;
+    if (stuff.player.focus != stuff.limits.focus) {
+        c.fillStyle = `rgba(128, 0, 0, 0.8)`;
+        let w = (stuff.player.focus / stuff.limits.focus) * 40;
+        w = w < 4 ? 4 : w;
+        c.fillRect(stuff.player.position.x-16, stuff.player.position.y+10, w, 10);
+    }
+
+    // focus / time path!
+    if (stuff.player.timePath.length > 0) {
+        c.strokeStyle = `rgba(128, 0, 0, 0.8)`;
+        // draw line from player to first point
+        c.beginPath();
+        c.moveTo(stuff.player.position.x, stuff.player.position.y);
+        c.lineTo(stuff.player.timePath[0].x, stuff.player.timePath[0].y);
+        c.stroke();
+
+        // draw lines between successive points
+        c.beginPath();
+        c.moveTo(stuff.player.timePath[0].x, stuff.player.timePath[0].y);
+        for (let i = 1;i < stuff.player.timePath.length-1;i++) {
+            c.lineTo(stuff.player.timePath[i].x, stuff.player.timePath[i].y);
+        }
+        c.stroke();
+        // draw player outline at points
+        stuff.player.timePath.forEach(point => {
+            c.beginPath();
+            c.arc(point.x, point.y, stuff.player.radius, 0, Math.PI*2);
+            c.stroke();
+        });
+    }
+
+    c.fillStyle = `black`;
+    c.strokeStyle = 'black';
 
     // draw level geometry
     stuff.walls.forEach(line => {
@@ -201,14 +242,47 @@ function mouseStep (dt) {
     const canDash = stuff.player.stamina > 0;
     const canFocus = stuff.player.focus > 0;
     const currentState = stuff.player.state;
+    let havePathPoints = stuff.player.timePath.length > 0;
 
-    // transition to dash
-    if (canDash && wantToDash && currentState != "dash") {
-        stuff.player.state = "dash";
-        // stop current stamina regen if player resumes dash
+    stuff.stats.debug["player state"] = stuff.player.state;
+    stuff.stats.debug["want to focus"] = wantToFocus;
+    stuff.stats.debug["can focus"] = canFocus;
+    stuff.stats.debug["focus"] = stuff.player.focus;
+
+    // stagger mini functions
+    const _cancelStaminaStagger = () => {
         if (stuff.staggers.stamina) {
             clearTimeout(stuff.staggers.stamina);
         }
+    };
+    const _beginStaminaStagger = () => {
+        _cancelStaminaStagger();
+        stuff.staggers.stamina = setTimeout(() => {
+            stuff.player.stamina = stuff.limits.stamina;
+        }, (stuff.limits.stamina+1)*1000);
+    };
+    const _cancelFocusStagger = () => {
+        if (stuff.staggers.focus) {
+            clearTimeout(stuff.staggers.focus);
+        }
+    };
+    const _beginFocusStagger = () => {
+        _cancelFocusStagger();
+        stuff.staggers.focus = setTimeout(() => {
+            stuff.player.focus = stuff.limits.focus;
+        }, (stuff.limits.focus + 1)*1000);
+    };
+
+    // transition to dash
+    if (canDash && wantToDash && currentState != "dash") {
+        if (havePathPoints || currentState == "focus") {
+            havePathPoints = false;
+            stuff.player.timePath = [];
+            _beginFocusStagger();
+        }
+        stuff.player.state = "dash";
+        // stop current stamina regen if player resumes dash
+        _cancelStaminaStagger();
     }
 
     // reduce player stamina if they are dashing
@@ -221,19 +295,20 @@ function mouseStep (dt) {
     let stoppedDashing = !wantToDash && stuff.player.state == "dash";
     if ( shouldEndDash || stoppedDashing ) {
         stuff.player.state = "walk";
-        // clear any existing stamina regen
-        if (stuff.staggers.stamina) {
-            clearTimeout(stuff.staggers.stamina);
-        }
-        // restore stamina in resource seconds + 1
-        stuff.staggers.stamina = setTimeout(() => {
-            stuff.player.stamina = stuff.limits.stamina;
-        }, (stuff.limits.stamina + 1)*1000);
+        _beginStaminaStagger();
     }
 
     // transition to focus
-    if (wantToFocus && stuff.player.state != "focus") {
+    if (wantToFocus && canFocus && stuff.player.state != "focus") {
+        if (stuff.player.currentState == "dash") {
+            _beginStaminaStagger();
+        }
+        if (havePathPoints) {
+            stuff.player.timePath = [];
+            havePathPoints = false;
+        }
         stuff.player.state = "focus";
+        _cancelFocusStagger();
     }
 
     if (stuff.player.state == "focus") {
@@ -241,16 +316,31 @@ function mouseStep (dt) {
     }
 
     // end focus, forced
-    const _cancelFocusStagger = () => {
-        if (stuff.staggers.focus) {
-            clearTimeout(stuff.staggers.focus);
+    if (stuff.player.state == "focus" && stuff.player.focus <= 0) {
+        stuff.player.state = "walk";
+        stuff.player.timePath = [];
+        _beginFocusStagger();
+    }
+
+    // create fixed path
+    if (stuff.player.state == "focus" && wantToFocus) {
+        if (stuff.player.timePath.length < 1) {
+            stuff.player.timePath.push(stuff.player.target);
+        } else {
+            const prev = stuff.player.timePath[ stuff.player.timePath.length-1 ];
+            const dist = getDist(prev, stuff.player.target);
+            if (dist > 20) {
+                stuff.player.timePath.push(stuff.player.target);
+            }
         }
-    };
-    const _beginFocusStagger = () => {
-        _cancelFocusStagger();
-        stuff.staggers.focus = setTimeout(() => {}, stuff.limits.focus + 1);
-    };
-    if (stuff.player.state == "focus" && stuff.player.focus <= 0 && wantToFocus) {
+    }
+
+    // end focus, release
+    if (canFocus && stuff.player.state == "focus" && !wantToFocus && havePathPoints) {
+        stuff.player.state = "fixed";
+    }
+
+    if (stuff.player.state == "fixed" && !havePathPoints) {
         stuff.player.state = "walk";
         _beginFocusStagger();
     }
@@ -261,8 +351,10 @@ function step (dt) {
     // state logic, mouse button logic
     mouseStep(dt);
 
+    let havePathPoints = () => stuff.player.timePath.length > 0;
+    let followingMouse = !(stuff.player.state == "fixed" && havePathPoints());
     const pos = stuff.player.position;
-    const target = stuff.player.target;
+    const target = followingMouse ? stuff.player.target : stuff.player.timePath[0];
 
     let dist = getDist(pos, target);
     let dir = getDirection(pos, target, dist);
@@ -273,7 +365,7 @@ function step (dt) {
     }
 
     let newPos = Object.assign({}, pos);
-    if (dist <= stuff.player.radius) { return; }
+    if (dist <= stuff.player.radius && stuff.player.state != "fixed") { return; }
     let mx = dir.x * dt * stuff.speeds[stuff.player.state];
     let my = dir.y * dt * stuff.speeds[stuff.player.state];
     // constrain maximmum movement deltas to 15 units - minor glitch the framerate doesn't always account for
@@ -293,8 +385,6 @@ function step (dt) {
         stuff.walls.some(line => doesLineInterceptCircle(line.p1, line.p2, {x: newPos.x, y: pos.y}, stuff.player.radius)),
         // just Y
         stuff.walls.some(line => doesLineInterceptCircle(line.p1, line.p2, {x: pos.x, y: newPos.y}, stuff.player.radius)),
-        // X and Y
-        // stuff.walls.some(line => doesLineInterceptCircle(line.p1, line.p2, newPos, stuff.player.radius)),
     ];
 
     if (!collisionWithLevel[0] && !collisionWithLevel[1]) {
@@ -304,6 +394,16 @@ function step (dt) {
         pos.y = newPos.y;
     } else if (!collisionWithLevel[0] && collisionWithLevel[1]) {
         pos.x = newPos.x;
+    }
+
+    // traversing path
+    if (!followingMouse) {
+        const dist = getDist(stuff.player.position, target);
+        if (dist <= 16) {
+            pos.x = target.x;
+            pos.y = target.y;
+            stuff.player.timePath.shift();
+        }
     }
 }
 
@@ -327,6 +427,9 @@ async function loop () {
                 resolve();
                 return;
             }
+
+            // debug
+            stuff.debug.innerText = Object.keys(stuff.stats.debug).reduce((str, key) => `${str}\n${key}: ${stuff.stats.debug[key]}`, "");
 
             draw();
             step(dt);
