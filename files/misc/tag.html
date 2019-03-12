@@ -12,8 +12,8 @@
 <div>
     <canvas id="canvas" width="800" height="600"></canvas>
     <div>
+        <button id="connect">Connect</button>
         <p>FPS: <span id="fps"></span></p>
-        <p>Discarded Frames: <span id="lag">0</span></p>
         <p id="debug"></p>
     </div>
 </div>
@@ -22,8 +22,13 @@
 /*
 stuff
     left mouse - time stuff, mouse down to start path, release mouse to execute? - working well enough
+        final rebalance: 0.5 second use, 1.5 second recharge
     right mouse - dash - working well enough
+        final rebalance: 2 second use, 4 second recharge, no partial re-use
     networking - current
+        emit events for freeze/unfreeze - done
+        respond to frozen world - next
+        create zombie players
     tag - to be done last
 
 */
@@ -36,8 +41,12 @@ function init() {
     stuff.canvas = document.getElementById("canvas");
     stuff.context = canvas.getContext("2d");
     stuff.fps = document.getElementById("fps");
-    stuff.cLag = document.getElementById("lag");
     stuff.debug = document.getElementById("debug");
+    stuff.connectButton = document.getElementById("connect");
+    
+    // url search params
+    const urlParams = new URLSearchParams(window.location.search);
+    const networkZombie = urlParams.get("zombie") == 1;
 
     stuff.stats = {
         frameSamples: [],
@@ -54,11 +63,11 @@ function init() {
 
     stuff.limits = {
         stamina: 0.5,
-        focus: 5
+        focus: 2
     };
 
-    // time freeze thing
-    stuff.gameFrozen = () => stuff.player.state == "focus";
+    // time freeze network thing
+    stuff.worldFrozen = false;
 
     // resource regenerators
     stuff.staggers = {
@@ -77,8 +86,6 @@ function init() {
         // target position
         target: {x: 0, y: 0},
         radius: 16,
-        // hardware lag
-        cLag: 0,
         // movement state
         state: "walk",
         // path for special thing
@@ -86,7 +93,9 @@ function init() {
         // is this player it?
         tagged: false,
         stamina: stuff.limits.stamina,
-        focus: stuff.limits.focus
+        focus: stuff.limits.focus,
+        // move automatically for network testing
+        zombie: networkZombie
     };
 
     // holds left (0) and right (2) pressed state
@@ -95,12 +104,54 @@ function init() {
     // event bindings
     playerBinding();
 
+    // other player & network stuff
+    stuff.connectButton.addEventListener("click", networkStuff);
+
     // level
     setMaps();
     stuff.walls = stuff.levels[1];
 
     loop();
+
+    // network zombie will automatically join the server
+    if (networkZombie) {
+        networkStuff();
+    }
 }
+
+function networkStuff () {
+    stuff.otherPlayers = {};
+    stuff.ws = {
+        socket: new WebSocket(`ws://${location.hostname}:18168/tag/connect`),
+        ready: false,
+        serverId: null,
+    };
+    const ws = stuff.ws.socket;
+    stuff.networkActions = getNetworkFunctions();
+
+    ws.onopen = () => stuff.ws.ready = true;
+    ws.onmessage = event => {
+        let data = JSON.parse(event.data);
+        // ignore any incoming events until we have an id
+        if (stuff.ws.serverId == null) {
+            if (data.id) {
+                stuff.ws.serverId = data.id;
+            }
+        } else if (data.action in stuff.networkActions) {
+            stuff.networkActions[data.action](data);
+        } else {
+            console.log(data);
+        }
+    };
+
+    // reset any player vars
+    stuff.player.state = "walk";
+    stuff.player.position = {x: 0, y: 0};
+    stuff.player.focus = stuff.limits.focus;
+    stuff.player.timePath = [];
+    stuff.connectButton.remove();
+    stuff.ws.lastPos = {x: 0, y: 0};
+};
 
 function playerMouseLogic (event) {
     const {clientX: x, clientY: y} = event;
@@ -171,13 +222,25 @@ function getDist (p1, p2) {
 function draw () {
     const c = stuff.context;
 
+    if (stuff.renderTagMessage) {
+        c.fillStyle = "black";
+        c.fillRect(0, 0, 800, 600);
+        c.font = "120px monospace";
+        c.fillStyle = "red";
+        c.fillText("TAGGED", 40, 200);
+        return;
+    }
+
     // clear area
     c.clearRect(0, 0, 800, 600)
+    c.fillStyle = "black";
 
     // draw player
+    c.strokeStyle = stuff.player.tagged ? "red" : "black";
     c.beginPath();
     c.arc(stuff.player.position.x, stuff.player.position.y, stuff.player.radius, 0, Math.PI*2);
     c.stroke();
+    c.strokeStyle = "black";
 
     // draw player status
     // stamina bar!
@@ -232,6 +295,38 @@ function draw () {
     });
 
     // draw effects
+    if (stuff.player.state == "focus") {
+        timeParticleEffects(c, stuff.player.position);
+    }
+
+    // draw other players
+    if (stuff.otherPlayers) {
+        Object.values(stuff.otherPlayers).forEach(client => {
+            c.strokeStyle = client.tagged ? 'red' : 'blue';
+            c.beginPath();
+            c.arc(client.x, client.y, stuff.player.radius, 0, Math.PI*2);
+            c.stroke();
+
+            if (client.particles) {
+                timeParticleEffects(c, client);
+            }
+        });
+    }
+
+    c.strokeStyle = 'black';
+}
+
+function timeParticleEffects (c, pos) {
+    const getColor = () => [0,0,0].map( _ => Math.floor(Math.random()*256));
+    for (let i = 0;i < 4;i++) {
+        const color = getColor();
+        const offset = [pos.x + ((Math.random()*64)-32), pos.y + ((Math.random()*64)-32)];
+        const radius = (Math.random()*8)+8;
+        c.fillStyle = `rgba(${color[0]},${color[1]},${color[2]}, 0.7)`;
+        c.beginPath();
+        c.arc(offset[0], offset[1], radius, 0, Math.PI*2);
+        c.fill();
+    }
 }
 
 // mouse buttons and move state
@@ -240,14 +335,9 @@ function mouseStep (dt) {
     const wantToDash = stuff.mouseState[2];
     const wantToFocus = stuff.mouseState[0];
     const canDash = stuff.player.stamina > 0;
-    const canFocus = stuff.player.focus > 0;
+    const canFocus = stuff.player.focus == stuff.limits.focus;
     const currentState = stuff.player.state;
     let havePathPoints = stuff.player.timePath.length > 0;
-
-    stuff.stats.debug["player state"] = stuff.player.state;
-    stuff.stats.debug["want to focus"] = wantToFocus;
-    stuff.stats.debug["can focus"] = canFocus;
-    stuff.stats.debug["focus"] = stuff.player.focus;
 
     // stagger mini functions
     const _cancelStaminaStagger = () => {
@@ -270,7 +360,7 @@ function mouseStep (dt) {
         _cancelFocusStagger();
         stuff.staggers.focus = setTimeout(() => {
             stuff.player.focus = stuff.limits.focus;
-        }, (stuff.limits.focus + 1)*1000);
+        }, (stuff.limits.focus + 2)*1000);
     };
 
     // transition to dash
@@ -283,6 +373,10 @@ function mouseStep (dt) {
         stuff.player.state = "dash";
         // stop current stamina regen if player resumes dash
         _cancelStaminaStagger();
+        // allow dash to start focus regen, uncommon bug
+        if (!stuff.staggers.focus) {
+            _beginFocusStagger();
+        }
     }
 
     // reduce player stamina if they are dashing
@@ -308,18 +402,12 @@ function mouseStep (dt) {
             havePathPoints = false;
         }
         stuff.player.state = "focus";
+        freezeNetwork();
         _cancelFocusStagger();
     }
 
     if (stuff.player.state == "focus") {
         stuff.player.focus -= dt;
-    }
-
-    // end focus, forced
-    if (stuff.player.state == "focus" && stuff.player.focus <= 0) {
-        stuff.player.state = "walk";
-        stuff.player.timePath = [];
-        _beginFocusStagger();
     }
 
     // create fixed path
@@ -336,25 +424,63 @@ function mouseStep (dt) {
     }
 
     // end focus, release
-    if (canFocus && stuff.player.state == "focus" && !wantToFocus && havePathPoints) {
-        stuff.player.state = "fixed";
+    if (stuff.player.state == "focus" && (!wantToFocus || stuff.player.focus <= 0)) {
+        if (havePathPoints) {
+            stuff.player.state = "fixed";
+        } else {
+            stuff.player.state = "walk";
+            stuff.player.timePath = [];
+            _beginFocusStagger();
+        }
     }
 
     if (stuff.player.state == "fixed" && !havePathPoints) {
         stuff.player.state = "walk";
         _beginFocusStagger();
     }
+
+    // unfreeze network
+    if (currentState == "focus" && stuff.player.state != currentState) {
+        unfreezeNetwork();
+    }
+}
+
+function getZombieTarget(pos) {
+    // extra hacky because this is just a minor testing feature for MP
+    if (!stuff.zombie) { stuff.zombie = { state: 0 }; }
+
+    let getTarget = () => stuff.zombie.state ? {x: 40, y: 450} : {x: 40, y: 0};
+    let dist = getDist(pos, getTarget());
+    if (dist <= 16) {
+        stuff.zombie.state = stuff.zombie.state ? 0 : 1;
+    }
+
+    return getTarget();
+}
+
+function tagStep () {
+    if (!stuff.otherPlayers || !stuff.player.tagged) { return; }
+
+    let it = Object.keys(stuff.otherPlayers).find(client => getDist(stuff.otherPlayers[client], stuff.player.position) <= 30);
+    if (it) {
+        tagPlayer(it);
+    }
 }
 
 function step (dt) {
 
+    // everyone is running away, don't do anything
+    if (stuff.renderTagMessage) { return; }
+
     // state logic, mouse button logic
     mouseStep(dt);
+    // see if we intersect with another player
+    tagStep();
 
     let havePathPoints = () => stuff.player.timePath.length > 0;
     let followingMouse = !(stuff.player.state == "fixed" && havePathPoints());
     const pos = stuff.player.position;
-    const target = followingMouse ? stuff.player.target : stuff.player.timePath[0];
+    const target = stuff.player.zombie ? getZombieTarget(pos) : followingMouse ? stuff.player.target : stuff.player.timePath[0];
 
     let dist = getDist(pos, target);
     let dir = getDirection(pos, target, dist);
@@ -366,6 +492,10 @@ function step (dt) {
 
     let newPos = Object.assign({}, pos);
     if (dist <= stuff.player.radius && stuff.player.state != "fixed") { return; }
+
+    // short circuit the rest of the move logic if world is frozen
+    if (stuff.worldFrozen) { return; }
+
     let mx = dir.x * dt * stuff.speeds[stuff.player.state];
     let my = dir.y * dt * stuff.speeds[stuff.player.state];
     // constrain maximmum movement deltas to 15 units - minor glitch the framerate doesn't always account for
@@ -400,10 +530,29 @@ function step (dt) {
     if (!followingMouse) {
         const dist = getDist(stuff.player.position, target);
         if (dist <= 16) {
-            pos.x = target.x;
-            pos.y = target.y;
-            stuff.player.timePath.shift();
+            if (!stuff.walls.some(line => doesLineInterceptCircle(line.p1, line.p2, target, stuff.player.radius))) {
+                pos.x = target.x;
+                pos.y = target.y;
+                stuff.player.timePath.shift();
+            }
         }
+    }
+}
+
+function networkStep () {
+    if (!stuff.ws || !stuff.ws.ready) { return; }
+
+    const dist = getDist(stuff.player.position, stuff.ws.lastPos);
+    if (dist > 15) {
+        // send new position to server
+        stuff.ws.socket.send(JSON.stringify({
+            action: "client-position",
+            x: stuff.player.position.x,
+            y: stuff.player.position.y,
+        }));
+
+        // update last sent position
+        stuff.ws.lastPos = Object.assign({}, stuff.player.position);
     }
 }
 
@@ -422,8 +571,6 @@ async function loop () {
             stuff.fps.innerText = stuff.stats.fps;
             // do not interpolate latency greater than 1 second
             if (dt > 1) {
-                stuff.player.cLag++;
-                stuff.cLag.innerText = stuff.player.cLag;
                 resolve();
                 return;
             }
@@ -433,6 +580,7 @@ async function loop () {
 
             draw();
             step(dt);
+            networkStep();
             
             resolve();
         }));
@@ -449,6 +597,87 @@ function updateFrameSamples (dt) {
         stuff.stats.frameSamples.shift();
     }
     stuff.stats.fps = (1/(stuff.stats.frameSamples.reduce((sum, num) => sum+num, 0) / stuff.stats.frameSamples.length)).toPrecision(5);
+}
+
+function getNetworkFunctions () {
+    let actions = {};
+    // add a player
+    actions["client-add"] = data => {
+            stuff.otherPlayers[data.client] = {x:0, y:0};
+    };
+    // remove a player
+    actions["client-remove"] = data => {
+        delete stuff.otherPlayers[data.client];
+    };
+
+    // update player position
+    actions["client-position"] = data => {
+        stuff.otherPlayers[data.client].x = data.x;
+        stuff.otherPlayers[data.client].y = data.y;
+    };
+
+    // receive buffered client data from server
+    actions["add-clients"] = data => {
+        data.clients.forEach(c => stuff.otherPlayers[c.id] = {x: c.x, y: c.y, particles: c.focus, tagged: c.tagged});
+    };
+
+    // at least 1 player is freezing time
+    actions["freeze"] = data => stuff.worldFrozen = true;
+
+    // no players are freezing time
+    actions["unfreeze"] = data => stuff.worldFrozen = false;
+
+    // set whether or not a particular client is emitting particles
+    actions["client-particles"] = data => {
+        stuff.otherPlayers[data.client].particles = data.value;
+    };
+
+    // general version of above which would have been better...
+    actions["client-prop"] = data => {
+        stuff.otherPlayers[data.client][data.prop] = data.value;
+    };
+
+    // set this client to tagged
+    actions["tag"] = data => {
+        // find & unset current tagged person
+        stuff.player.tagged = false;
+        Object.values(stuff.otherPlayers).forEach(client => client.tagged = false);
+
+        // set new tagged
+        if (data.client == stuff.ws.serverId) {
+            tagThisClient();
+        } else {
+            stuff.otherPlayers[data.client].tagged = true;
+        }
+    };
+
+    return actions;
+}
+
+function tagThisClient () {
+
+    // black out & don't set tag yet to give everyone a chance to get away
+    stuff.renderTagMessage = true;
+    setTimeout(() => {
+        stuff.player.tagged = true;
+        stuff.renderTagMessage = false;
+    }, 5000);
+}
+
+function freezeNetwork () {
+    if (!(stuff.ws && stuff.ws.ready)) { return; }
+    stuff.ws.socket.send(JSON.stringify({action: "world-freeze"}));
+}
+
+function unfreezeNetwork () {
+    if (!(stuff.ws && stuff.ws.ready)) { return; }
+    stuff.ws.socket.send(JSON.stringify({action: "world-unfreeze"}));
+}
+
+function tagPlayer(id) {
+    if (!(stuff.ws && stuff.ws.ready)) { return; }
+    stuff.player.tagged = false;
+    stuff.ws.socket.send(JSON.stringify({action: "tag", client: id}));
 }
 
 function setMaps () {

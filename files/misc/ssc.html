@@ -42,7 +42,7 @@ class CanvasAndSocketStuff {
     }
 
     socketStuff () {
-        let socket = new WebSocket("ws://rldv0211.gcsc.att.com:18168/ssc/connect");
+        let socket = new WebSocket(`ws://${location.hostname}:18168/ssc/connect`);
         socket.onopen = () => this.ready = true;
         socket.onmessage = event => {
             let data = JSON.parse(event.data);
