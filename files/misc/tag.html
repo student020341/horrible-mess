@@ -443,6 +443,12 @@ function mouseStep (dt) {
     if (currentState == "focus" && stuff.player.state != currentState) {
         unfreezeNetwork();
     }
+
+    // catch a bug that prevents focus regen
+    // player transitioned out of fixed state SOMEHOW - so make sure to start regen
+    if (currentState == "fixed" && stuff.player.state != currentState) {
+        _beginFocusStagger();
+    }
 }
 
 function getZombieTarget(pos) {
