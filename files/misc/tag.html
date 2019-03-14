@@ -47,6 +47,8 @@ function init() {
     // url search params
     const urlParams = new URLSearchParams(window.location.search);
     const networkZombie = urlParams.get("zombie") == 1;
+    let level = urlParams.get("level") || 1;
+    if (level > 2 || level < 0) { level = 1; }
 
     stuff.stats = {
         frameSamples: [],
@@ -109,7 +111,7 @@ function init() {
 
     // level
     setMaps();
-    stuff.walls = stuff.levels[1];
+    stuff.walls = stuff.levels[level];
 
     loop();
 
