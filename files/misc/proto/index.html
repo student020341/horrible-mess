@@ -1,0 +1,361 @@
+<html>
+	<head>
+		<style>
+			table {
+				border-collapse: collapse;
+			}
+
+			th, td {
+				border: 1px solid black;
+				box-sizing: border-box;
+				padding: 4px;
+			}
+
+			.pointer {
+				cursor: pointer;
+			}
+
+			.red {
+				color: red;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="container"></div>
+	</body>
+</html>
+<script src="/misc/file/proto/idb.js"></script>
+<script>
+
+	// database interface for 'project' operations
+	class ProjectDBI {
+		constructor(container) {
+			this.idb = new IDBH("projects", 1, ProjectDBI.schema());
+			this.container = container;
+		}
+
+		// db stuff
+		// schema / upgrades
+		static schema () {
+			return [
+				// link table of node associations
+				db => new Promise(resolve => {
+					let store = db.createObjectStore("links", { keypath: "id", autoIncrement: true });
+
+					store.createIndex("parent", "parent", { unique: false });
+					store.createIndex("child", "child", { unique: false });
+
+					store.transaction.oncomplete = resolve;
+				}),
+				// node table of node properties
+				db => new Promise(resolve => {
+					let store = db.createObjectStore("nodes", { keypath: "id", autoIncrement: true });
+
+					store.transaction.oncomplete = event => {
+						resolve();
+					};
+				})
+			];
+		}
+
+		// open db connection
+		open () {
+			return this.idb.open();
+		}
+
+		// get children for a given parent id
+		getChildren (id) {
+			let store = this.idb.getStore("links", "readonly");
+			let index = store.index("parent");
+
+			// let projects = [];
+			// return new Promise(resolve => {
+			// 	index.openCursor().onsuccess = event => {
+			// 		let cursor = event.target.result;
+			// 		if (cursor) {
+			// 			projects.push(cursor.value);
+			// 			cursor.continue();
+			// 		} else {
+			// 			resolve(projects);
+			// 		}
+			// 	};
+			// });
+
+			return new Promise (resolve => {
+				index.getAll(id).onsuccess = event => resolve(event.target.result);
+			});
+		}
+
+		// ids of nodes that link to this node
+		getLinksTo (id) {
+			let store = this.idb.getStore("links", "readonly");
+			let index = store.index("child");
+
+			return new Promise (resolve => {
+				index.getAllKeys(id).onsuccess = event => resolve(event.target.result);
+			});
+		}
+
+		// ids of nodes that link from this node
+		getLinksFrom (id) {
+			let store = this.idb.getStore("links", "readonly");
+			let index = store.index("parent");
+
+			return new Promise (resolve => {
+				index.getAllKeys(id).onsuccess = event => resolve(event.target.result);
+			});
+		}
+
+		/*
+			- delete any links that have this node as a child
+			- delete any links that exist solely as a link or sub link from this node
+			- delete any nodes with no other references
+		*/
+		async deleteNode (id) {
+			id = Number(id);
+
+			// links to this node
+			let parents = await this.getLinksTo(id);
+
+			// links from this node
+			let children = await this.getLinksFrom(id);
+
+			// sub refs on the tree are left to exist because they exist as types
+			// properties exclusive to a node will exist only on that node
+
+			// delete all references to or from this node
+			let linksToDelete = [...parents, ...children];
+			let deleteLinksPromise = this.idb.delete("links", linksToDelete);
+
+			// delete the node itself
+			let deleteNodePromise = this.idb.delete("nodes", [id]);
+
+			return Promise.all([deleteLinksPromise, deleteNodePromise]);
+		}
+
+		// get info from node table
+		getNode (id) {
+			let store = this.idb.getStore("nodes", "readonly");
+			let request = store.get(id);
+			return new Promise((resolve, reject) => {
+				request.onerror = event => {
+					reject(event.target.result);
+				};
+				request.onsuccess = event => {
+					resolve(event.target.result);
+				};
+			});
+		}
+
+		async addNode (parent, data) {
+			let records = await this.idb.add("nodes", Array.isArray(data) ? data : [data]);
+			return this.idb.add("links", records.map(record => ({ parent: parent, child: record.id })));
+		}
+
+		// rendering stuff
+		// remove all child nodes from container
+		clearContainer () {
+			Array.from(this.container.children).forEach(child => child.remove());
+		}
+
+		/**
+		 * create project list view
+		 */
+		async initialView () {
+			this.clearContainer();
+
+			// html generators
+			const projectTileHtml = async () => {
+				// 0 = root
+				let projects = await this.getChildren(0).then(links => links.map(link => link.child));
+
+				// test
+				let tileData = await Promise.all( projects.map( async id => {
+					let nodeData = await this.getNode(id);
+					return { id: id, name: nodeData.__name };
+				} ) );
+
+				return `<ul id="project-tiles">
+					<li class="pointer p-row" data-id="0">create new</li>
+					${tileData.map(datum => `<li>
+						<span class="red pointer">[x]</span>
+						<span data-id="${datum.id}" class="pointer p-row">${datum.name}</span>
+					</li>`).join("")}
+				</ul>`;
+			};
+
+			const html = async () => `<h2>Projects</h2>
+			${await projectTileHtml()}`;
+
+			// set container content
+			this.container.innerHTML = await html();
+
+			// bindings
+			Array.from(this.container.querySelectorAll("#project-tiles .p-row")).forEach(el => {
+				el.addEventListener("click", () => {
+					let id = el.dataset["id"];
+					if (id == 0) {
+						// create a new project
+						this.createView();
+					} else {
+						// load an existing project
+						this.nodeView(Number(id));
+					}
+				});
+			});
+
+			Array.from(this.container.querySelectorAll("#project-tiles .red")).forEach(el => {
+				el.addEventListener("click", () => {
+					const next = el.nextElementSibling;
+					const id = next.dataset["id"];
+					const name = next.innerText;
+					if (confirm(`Delete project "${name}"?`)) {
+						this.deleteNode(id).then(() => this.initialView());
+					}
+				});
+			});
+		}
+
+		/**
+		* new project ui
+		*/
+		async createView () {
+			this.clearContainer();
+
+			let fields = [
+				{
+					display: "Project Name",
+					field: "__name"
+				}
+			];
+
+			this.container.innerHTML = `<h2>New Project</h2>
+			${fields.map(field => `<label>${field.display}</label><br>
+				<input type="text" data-field="${field.field}"/>`).join("<br><br>")}<br>
+			<button id="submit">submit</button>
+			<button id="cancel">cancel</button>`;
+
+			// bindings
+			this.container.querySelector("#submit").addEventListener("click", () => {
+				let data = Array.from(this.container.querySelectorAll("input")).reduce((obj, el) => {
+					obj[el.dataset["field"]] = el.value;
+					return obj;
+				}, {});
+
+				if (!data.__name) {
+					alert("name is required");
+					return;
+				}
+
+				this.addNode(0, data).then(() => this.initialView());
+			});
+
+			this.container.querySelector("#cancel").addEventListener("click", () => {
+				this.initialView();
+			});
+		}
+
+		/*
+			project/node content ui
+		*/
+		async nodeView (id) {
+			this.clearContainer();
+
+			let [data, children] = await Promise.all([
+				this.getNode(id),
+				this.getChildren(id)
+			]);
+
+			// html for props
+			let propsListHTML = () => {};
+
+			let props = Object.keys(data).filter(key => !/^__/.test(key));
+
+			this.container.innerHTML = `<span id="to-projects" class="pointer">back</span><h2>Project ${data.__name}</h2>
+			<h3>Properties</h3>
+			<ul id="props">
+				<li class="pointer">new</li>
+				${props.map(key => `<li class="pointer" data-prop="${key}" data-type="${data[key].type}">
+					${key} (${data[key].dataType})
+				</li>`).join("")}
+			</ul>
+			`;
+
+			// bindings
+			// back button
+			document.getElementById("to-projects").addEventListener("click", () => this.initialView());
+			// type list items
+			Array.from(this.container.querySelectorAll("#props li")).forEach(el => {
+				el.addEventListener("click", () => {
+					let type = el.dataset["type"];
+					if (type == "link") {
+						console.log("open link");
+					} else if (type == "prop") {
+						this.createPropView(id, el.dataset["prop"]);
+					} else {
+						this.createPropView(id);
+					}
+				})
+			});
+		}
+
+		/*
+			ui to create a new property for a given node
+			if given another value, update that prop
+		*/
+		async createPropView (id, editing=false) {
+			this.clearContainer();
+
+			const propRowHtml = () => `<div>
+				<select>
+					<option>text</option>
+					<option>number</option>
+					<option>complex</option>
+				</select>
+				<input placeholder="property name" type="text" value="${editing ? editing : ""}" />
+			</div>
+			<button id="submit">submit</button>`;
+
+			this.container.innerHTML = propRowHtml();
+
+			// bindings
+			let sel = this.container.querySelector("select");
+			sel.addEventListener("change", event => {
+				let type = event.target.value;
+				if (type == "complex") {
+					
+				}
+			});
+
+			this.container.querySelector("button#submit").addEventListener("click", async () => {
+
+				const field = this.container.querySelector("input");
+				if (!field.value) {
+					alert("property name cannot be blank");
+					return;
+				}  else if (/^__/.test(field.value)) {
+					alert("property name cannot start with 2+ underscores");
+					return;
+				}
+
+				let nodeData = await this.getNode(id);
+
+				if (field.value in nodeData) {
+					alert(`property ${field.value} already exists`);
+					return;
+				}
+				
+				nodeData[field.value] = {
+					dataType: sel.value, // text, number, complex (object)
+					type: "prop", // prop or link to an existing type
+					collection: false // is this prop an array of this type
+				};
+				this.idb.update("nodes", id, nodeData).then(() => this.nodeView(id));
+			});
+		}
+	}
+
+	let dbh = new ProjectDBI(document.getElementById("container"));
+	dbh.open().then(() => dbh.initialView());
+
+</script>
