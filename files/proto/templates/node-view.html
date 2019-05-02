@@ -1,0 +1,83 @@
+<div>
+    <template v-if="!node.__name">
+        <p>Given node id does not exist</p>
+        <router-link to="/">home</router-link>
+        
+    </template>
+    <template v-else>
+        <router-link to="/">&lt; projects</router-link>
+        <h3>Viewing Project: {{node.__name}}</h3>
+        <p>Project Properties</p>
+        <ul class="list" v-bind:class="{dragging: dragging}">
+            <li class="pointer" v-on:click="propForm.show = true">+ add new</li>
+            <li v-for="item in props" 
+                draggable="true"
+                v-on:dragstart="dragStart($event, item.sort)"
+                v-on:dragend="dragEnd"
+                v-on:drop="drop($event, item.sort)"
+                v-on:dragover="allowDrop"
+                class="draggable"
+                >
+                {{item.key}}
+                <i v-bind:class="typeIcon(item)" class="help" v-bind:title="item.type"></i>
+                <i v-if="item.list" class="mdi mdi-format-list-bulleted-square help" title="List"></i>
+                <div class="more-icons">
+                    <i v-on:click="deleteProp(item.key)" title="Delete" class="iicon mdi mdi-delete"></i>
+                    <i v-on:click="editProp(item.key)" title="Edit" class="iicon mdi mdi-pencil"></i>
+                </div>
+                <!-- drag and drop -->
+                <div class="drop-left"></div>
+                <div class="drop-right"></div>
+            </li>
+        </ul>
+        <p>Types</p>
+        <ul class="list">
+            <li class="pointer">
+                <router-link class="plain-a" :to="`/project/${id}/type/0`">+ add new</router-link>
+            </li>
+            <li v-for="type in types">
+                {{type.props.name}}
+                <div class="more-icons">
+                    <i title="Delete" v-on:click="deleteType(type)" class="iicon mdi mdi-delete"></i>
+                    <router-link class="plain-a" :to="`/project/${id}/type/${type.__id}`">
+                        <i title="Edit" class="iicon mdi mdi-pencil"></i>
+                    </router-link>
+                </div>
+            </li>
+        </ul>
+        <p>Interactions</p>
+        <ul class="list">
+            <li class="pointer">
+                <router-link class="plain-a" :to="`/project/${id}/interaction/0`">+ add new</router-link>
+            </li>
+            <li v-for="interaction in interactions">
+                {{interaction.props.name}}
+                <div class="more-icons">
+                    <i title="Delete" v-on:click="deleteInteraction(interaction)" class="iicon mdi mdi-delete"></i>
+                    <router-link class="plain-a" :to="`/project/${id}/interaction/${interaction.__id}`">
+                        <i title="Edit" class="iicon mdi mdi-pencil"></i>
+                    </router-link>
+                </div>
+            </li>
+        </ul>
+    </template>
+    <!-- new prop form -->
+    <div v-if="propForm.show">
+        <div class="modal-bg" v-on:click="clearPropForm"></div>
+        <div class="modal">
+            <p>New Property</p>
+            <select v-model="propForm.type">
+                <option>Text</option>
+                <option>Number</option>
+                <option>Type</option>
+            </select>
+            <input type="text" v-model="propForm.name" placeholder="property name" />
+            <br>
+            <label>List</label>
+            <input type="checkbox" v-model="propForm.list" />
+            <br>
+            <button :disabled="!propForm.name" v-on:click="submitPropForm">Submit</button>
+            <button v-on:click="clearPropForm">Cancel</button>
+        </div>
+    </div>
+</div>

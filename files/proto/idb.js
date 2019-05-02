@@ -116,6 +116,11 @@ class IDBH {
         return this.getTransaction([name], mode).objectStore(name);
     }
 
+    // convenience for getting an index from a store/table
+    getIndex (storeName, mode, indexName) {
+        return this.getStore(storeName, mode).index(indexName);
+    }
+
     testGet () {
         let transaction = this.db.transaction(["associations"]);
         let store = transaction.objectStore("associations");

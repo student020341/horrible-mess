@@ -1,0 +1,18 @@
+<div>
+    <h1>Projects</h1>
+    <ul class="project-list">
+        <li>
+            <span class="new" title="create new project">
+                <router-link to="/new-project">+ new</router-link>
+            </span>
+        </li>
+        <li v-for="project in projects">
+            <span class="delete" title="Delete Project" v-on:click="remove(project.id)">X</span>
+            <router-link :to="`/project/${project.id}`">
+                <span class="name" title="Open Project">
+                    {{ project.props.__name }}
+                </span>
+            </router-link>
+        </li>
+    </ul>
+</div>

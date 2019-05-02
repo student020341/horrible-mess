@@ -1,0 +1,76 @@
+<div>
+    <template v-if="!loaded">
+        <p>Loading</p>
+    </template>
+    <template v-else-if="!types.length">
+        <p>Your project has no types! <router-link :to="`/project/${pid}`">Go make some.</router-link></p>
+    </template>
+    <template v-else-if="projectName">
+        <h1>
+            <template v-if="iid">Editing</template>
+            <template v-else>New</template>
+            interaction for project {{projectName}}
+        </h1>
+        <h3>Step 1</h3>
+        <p>Interaction Name: <input v-model="name" type="text" /></p>
+        <p>
+            Information from the type(s)
+            <template v-for="(input, index) in inputs">
+                <div class="interaction-select-group">
+                    <button v-if="index > 0" v-on:click="removeInput(index)" title="Delete">x</button>
+                    <select v-model="input.type" v-on:change="setInputProps($event, input)">
+                        <option v-for="type in types" :value="type.id">{{type.data.name}}</option>
+                    </select>
+                    <br>
+                    <div class="more-icons">
+                        <i class="mdi mdi-format-list-bulleted-square help" title="List"></i>
+                        <input type="checkbox" v-model="input.list">
+                    </div>
+                </div>
+                <span v-if="index < inputs.length-1">, </span>
+            </template>
+            <button v-on:click="addInput">+</button>
+            is needed in order to obtain
+            <template v-for="(output, index) in outputs">
+                <div class="interaction-select-group">
+                    <button v-if="index > 0" v-on:click="removeOutput(index)" title="Delete">x</button>
+                    <select v-model="output.type">
+                        <option>Text</option>
+                        <option>Number</option>
+                        <option>Nothing</option>
+                        <option v-for="type in types" :value="type.id">{{type.data.name}}</option>
+                    </select>
+                    <br>
+                    <div class="more-icons">
+                        <i class="mdi mdi-format-list-bulleted-square help" title="List"></i>
+                        <input type="checkbox" v-model="output.list">
+                    </div>
+                </div>
+                <span v-if="index < outputs.length-1">, </span>
+            </template>
+            <button v-on:click="addOutput">+</button>
+            via "{{name}}"
+        </p>
+        <h3>Step 2</h3>
+        <p>Specific data used from each type (per group, none checked = all needed)</p>
+        <template v-for="input in inputs">
+            <div v-if="input.type" class="interaction-step-2">
+                <span>Data Type {{propTypeLookup(input.type)}}</span>
+                <div class="type-props">
+                    <div v-for="prop in input.props">
+                        <input type="checkbox" v-model="prop.include">
+                        <span>{{prop.name}} (type: {{propTypeLookup(prop.type)}})</span>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <button v-on:click="saveInteraction">Save</button>
+        <button>
+            <router-link class="plain-a" :to="`/project/${pid}`">Cancel</router-link>
+        </button>
+    </template>
+    <template v-else>
+        <p>Given project ID does not exist</p>
+    </template>
+</div>
