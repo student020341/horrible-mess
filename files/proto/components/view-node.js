@@ -140,8 +140,19 @@ _components.push((async () => ({
                 };
                 Vue.set(this, "propForm", { show: true, ...updated });
             },
-            deleteType (type) {
-                if (confirm(`Delete type "${type.props.name}"?`)) {
+            async deleteType (type) {
+                const dependencies = await dbh.dependencyForNode(this.id, type.__id);
+                const totalNumAffected = Object.keys(dependencies.types).length + Object.keys(dependencies.interactions).length;
+
+                let prompt = `Delete type "${type.props.name}"?`;
+                if (totalNumAffected > 0) {
+                    prompt += `\nThis will cause ${totalNumAffected} issue(s)
+Types: ${dependencies.types.map(t => t.props.name).join(", ")}               
+
+Interactions: ${dependencies.interactions.map(i => i.props.name).join(", ")}`;
+                }
+
+                if (confirm(prompt)) {
                     dbh.deleteNode(type.__id).then(async () => {
                         const children = await dbh.getLinksFrom(this.id).then(ids => dbh.mapNodes(ids));
                         this.types = children.filter(node => node.props.__type == "type");

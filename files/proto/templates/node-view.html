@@ -2,11 +2,14 @@
     <template v-if="!node.__name">
         <p>Given node id does not exist</p>
         <router-link to="/">home</router-link>
-        
     </template>
     <template v-else>
         <router-link to="/">&lt; projects</router-link>
         <h3>Viewing Project: {{node.__name}}</h3>
+        <button>
+            <router-link class="plain-a" :to="`/project/${id}/report`">Report</router-link>
+        </button>
+        <button>Export</button>
         <p>Project Properties</p>
         <ul class="list" v-bind:class="{dragging: dragging}">
             <li class="pointer" v-on:click="propForm.show = true">+ add new</li>

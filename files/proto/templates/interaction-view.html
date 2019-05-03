@@ -17,7 +17,7 @@
             Information from the type(s)
             <template v-for="(input, index) in inputs">
                 <div class="interaction-select-group">
-                    <button v-if="index > 0" v-on:click="removeInput(index)" title="Delete">x</button>
+                    <button v-if="index > 0 || inputs.length > 1" v-on:click="removeInput(index)" title="Delete">x</button>
                     <select v-model="input.type" v-on:change="setInputProps($event, input)">
                         <option v-for="type in types" :value="type.id">{{type.data.name}}</option>
                     </select>

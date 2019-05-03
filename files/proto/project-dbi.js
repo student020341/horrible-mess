@@ -84,6 +84,34 @@ class ProjectDBI {
         });
     }
 
+    // get all nodes for a project id and find which reference a given node id
+    async dependencyForNode (pid, nid) {
+        pid = Number(pid);
+        nid = Number(nid);
+
+        // all children of project minus the given node id
+        const children = await this.getLinksFrom(pid)
+            .then(ids => ids.filter(id => id != nid))
+            // map node data to id
+            .then(ids => this.mapNodes(ids));
+
+        // check type props for given id
+        const typeDep = children.filter(({props: data}) => data.__type == "type" && data.props.some(prop => prop.type == nid));
+
+        // check interaction inputs and outputs for given id
+        const interactionDep = children.filter(({props: data}) => data.__type == "interaction" && 
+        (
+            data.outputs.some(o => o.type == nid) || 
+            // check input type data for the given type as well
+            data.inputs.some(i => i.type == nid || i.props.some(ip => ip.type == nid))
+        ));
+
+        return {
+            types: typeDep,
+            interactions: interactionDep
+        };
+    }
+
     /*
         - delete any links that have this node as a child
         - delete any links that exist solely as a link or sub link from this node

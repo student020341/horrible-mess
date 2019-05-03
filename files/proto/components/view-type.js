@@ -37,8 +37,8 @@ _components.push((async () => ({
 
             // load project types
             this.projectTypes = await dbh.getLinksFrom(this.pid)
-                .then(async ids => dbh.mapNodes(ids))
-                .then(mapped => mapped.filter(type => type.props.name != this.name));
+                .then(ids => dbh.mapNodes(ids))
+                .then(mapped => mapped.filter(type => type.props.name != this.name && type.props.__type == "type"));
 
             this.loaded = true;
         },
