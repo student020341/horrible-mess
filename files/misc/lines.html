@@ -105,7 +105,8 @@ function rebuildLines () {
         createStandardNormals();
     }
 
-    horribleGuessLines();
+    // horribleGuessLines();
+    bgtest();
     
     lines.forEach(line => scene.add(line));
     applyRotations();
@@ -202,7 +203,7 @@ function horribleGuessLines () {
     (() => {
         let points = [];
         for (let i = 0;i < resolution;i++) {
-            let theta = radiansPer * i;
+            let theta = 0;//-Math.PI / 4;
             let phi = radiansPer * i;
 
             let [x, y, z] = pointOnSphere(4, theta, phi);
@@ -212,6 +213,36 @@ function horribleGuessLines () {
         points.push(points[0]);
         lines.push(simpleLine(points, 0x00ffff));
     })();
+}
+
+function bgtest () {
+    // target rotation
+    lines.push(simpleLine([
+		new vec3(0, 0, 0),
+		new vec3(5, 10, 10)
+    ]));
+
+    let bg = new THREE.BufferGeometry();
+    console.log(bg);
+    let verts = new Float32Array([
+        -2, -2, 0,
+        2, -2, 0,
+        2, 2, 0,
+        -2, -2, 0,
+        2, 2, 0,
+        -2, 2, 0
+    ]);
+    
+    bg.addAttribute("position", new THREE.BufferAttribute( verts, 3 ));
+
+    console.log(bg.attributes.position.array);
+    bg.lookAt(new vec3(5, 10, 10));
+    console.log(bg.attributes.position.array)
+
+    let material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    let mesh = new THREE.Mesh(bg, material);
+
+    lines.push(mesh);
 }
 
     // degrees => radians
