@@ -237,7 +237,7 @@ func main() {
 	// todo: make server killable via web request
 	http.HandleFunc("/", Handle)
 
-	port := "18168"
+	port := "2000"
 	fmt.Println("serving on port:", port)
 
 	http.ListenAndServe(":"+port, nil)

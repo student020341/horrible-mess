@@ -124,7 +124,7 @@ function init() {
 function networkStuff () {
     stuff.otherPlayers = {};
     stuff.ws = {
-        socket: new WebSocket(`ws://${location.hostname}:18168/tag/connect`),
+        socket: new WebSocket(`ws://${location.hostname}:2000/tag/connect`),
         ready: false,
         serverId: null,
     };
