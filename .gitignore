@@ -3,3 +3,6 @@
 
 # exclude server executable
 server
+
+# omit key file
+key
