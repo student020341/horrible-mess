@@ -153,6 +153,21 @@ func (router *SubRouter) Handle (w http.ResponseWriter, r *http.Request, path []
 			fmt.Fprintf(w, "failed to encode response")
 		} else {
 			w.Header().Set("Content-Type", "application/json")
+			// todo: revisit how this works / do this check earlier
+			// - remove HTTPStatusCode from payload before this point
+			// check for a StatusCode
+			hash, haveMap := response.(map[string]interface{})
+			if (haveMap) {
+				if StatusCode, ok := hash["HTTPStatusCode"]; ok {
+					intStatusCode, ok := StatusCode.(int)
+					if ok {
+						w.WriteHeader(intStatusCode)
+					} else {
+						w.WriteHeader(http.StatusInternalServerError)
+						fmt.Println("error processing status code:", err.Error())
+					}
+				}
+			}
 			fmt.Fprintf(w, "%v", string(encoded))
 		}
 	} else if (!haveMatch) {
