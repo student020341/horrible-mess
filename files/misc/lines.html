@@ -21,6 +21,7 @@
     </div>
 </div>
 <script src="/misc/file/three.min.js"></script>
+<script src="/misc/file/WheelBoneSkinClasses.js"></script>
 <script>
 
 let domNodes = {
@@ -106,7 +107,8 @@ function rebuildLines () {
     }
 
     // horribleGuessLines();
-    bgtest();
+    // bgtest();
+    qTest();
     
     lines.forEach(line => scene.add(line));
     applyRotations();
@@ -243,16 +245,102 @@ function bgtest () {
     let mesh = new THREE.Mesh(bg, material);
 
     lines.push(mesh);
+
+    // 2nd line, straight up
+    lines.push(simpleLine([
+        new vec3(0, 0, 0),
+        new vec3(0, 10, 0)
+    ]));
+    let bg2 = new THREE.BufferGeometry();
+    console.log(bg);
+    let verts2 = new Float32Array([
+        -2, -2, 0,
+        2, -2, 0,
+        2, 2, 0,
+        -2, -2, 0,
+        2, 2, 0,
+        -2, 2, 0
+    ]);
+
+    bg2.addAttribute("position", new THREE.BufferAttribute( verts2, 3 ));
+    bg2.lookAt(new vec3(0, 10, 0));
+
+    let material2 = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    let mesh2 = new THREE.Mesh(bg2, material2);
+
+    lines.push(mesh2);
 }
 
-    // degrees => radians
+// degrees => radians
 function RadiansFrom (degrees) {
     return degrees * (Math.PI / 180);
 }
     
-    // radians => degrees
+// radians => degrees
 function DegreesFrom (radians) {
     return radians / (Math.PI / 180);
+}
+
+function createMesh (points) {
+    console.log("points");
+    for (let i = 0;i < points.length;i+=3) {
+        const [x, y, z] = points.slice(i, i+3);
+        console.log(`x: ${x.toFixed(2)}, y: ${y.toFixed(2)}, z: ${z.toFixed(2)}`);
+    }
+    let buffer = new THREE.BufferGeometry();
+    let verts = new Float32Array(points);
+    buffer.addAttribute("position", new THREE.BufferAttribute( verts, 3 ));
+    let material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    let mesh = new THREE.Mesh(buffer, material);
+
+    return mesh;
+}
+
+function rotatePoints (points, direction) {
+    let buffer = new THREE.BufferGeometry();
+    buffer.addAttribute("position", new THREE.BufferAttribute(new Float32Array(points), 3))
+    buffer.lookAt(direction);
+    return buffer.attributes.position.array;
+}
+
+function generateDisc (resolution, radius, origin, direction) {
+
+    const circlePoint = (radius, theta) => [ radius * Math.cos(theta), radius * Math.sin(theta) ];
+
+    const radiansPer = RadiansFrom(360 / resolution);
+    let points = [0, 0, 0];
+    for (let i = 0;i < resolution;i++) {
+        const theta = radiansPer * i;
+        const [x, y] = circlePoint(radius, theta);
+
+        points = points.concat([x, y, 0]);
+    }
+    points = rotatePoints(points, direction);
+
+    for (let i = 0;i < points.length;i+=3) {
+        points[i] += origin.x;
+        points[i+1] += origin.y;
+        points[i+2] += origin.z;
+    }
+
+    return points;
+}
+
+function qTest () {
+    // let points = generateDisc(4, 4, new vec3(0, 0, 0), new vec3(0, 0, 1));
+    // let mesh = createMesh(points);
+    // lines.push(mesh);
+
+    let disc = new DiscBone(new vec3(0, 0, 0), { rotation: new vec3(1, 1, 2), segment: 4 });
+    let disc2 = new DiscBone(new vec3(0, 3, 0), {rotation: new vec3(1,1,2), segmnet: 4});
+    // disc.generate(4, 4);
+
+    let skeleton = new Skeleton([disc, disc2]);
+
+    let mesh = skeleton.createModel();
+    lines.push(mesh);
+
+    console.log(disc);
 }
 
 async function loop () {

@@ -25,6 +25,24 @@ class BoneUtils {
         return [x, y];
     }
 
+    static qRotatePoints (points, direction) {
+        let buffer = new THREE.BufferGeometry();
+        buffer.addAttribute("position", new THREE.BufferAttribute(new Float32Array(points), 3))
+        buffer.lookAt(direction);
+        return buffer.attributes.position.array;
+    }
+
+    static qVector3FromFlat (points) {
+        let cp = Array.from(points.slice());
+        let vectors = [];
+
+        while(cp.length > 0){
+            vectors.push(new THREE.Vector3(...cp.splice(0, 3)));
+        }
+
+        return vectors;
+    }
+
     /**
      * get an x,y,z point on a sphere
      * rotate phi radians of the z axis and then theta radians around the y axis
@@ -130,9 +148,9 @@ class Skeleton {
         // points in disc
         this.resolution = 3;
         // useful for debugging, default to true
-        this.connectEdges = false;
+        this.connectEdges = true;
         // tilt bases and create extra discs to smooth turns / prevent flat angles
-        this.autoModel = false;
+        this.autoModel = true;
         // threshold for rotation between 2 bones
         this.autoAngleLimit = BoneUtils.RadiansFrom(10);
 
@@ -280,8 +298,10 @@ class DiscBone {
     constructor (origin, options) {
         // center point of disc
         this.origin = origin;
+
+        options = Object.assign({}, options);
         // [theta, phi]
-        this.rotation = options.rotation || [0, Math.PI/2];
+        this.rotation = options.rotation || new THREE.Vector3(0, 1, 0);
         // start, mid, end - determines if a face should be created with the origin
         this.segment = options.segment || DiscBone.Segments()["Mid"]; // default to section with no face or need for a center point
         
@@ -295,22 +315,25 @@ class DiscBone {
     // attempt to convert the eular-ish solution to another
     generate (radius, resolution) {
         // vertices
-        this.vertices = [this.origin]; // todo: conditional for this line
+        this.vertices = [new THREE.Vector3(0, 0, 0)]; // todo: conditional for this line
         let radiansPerIteration = BoneUtils.RadiansFrom( 360 / resolution );
         for (let i = 0;i < resolution;i++) {
-            let theta = this.rotation[0];
-            let phi = radiansPerIteration * i;
+            let theta = radiansPerIteration * i;
 
-            // DEBUG
-            theta = radiansPerIteration * i;
-            phi = Math.PI / 2;
-
-            let [x, y, z] = BoneUtils.pointOnSphere(radius, theta, phi);
+            let [x, z] = BoneUtils.getCirclePoint(radius, theta);
 
             this.vertices.push(
-                new THREE.Vector3(x + this.origin.x, y + this.origin.y, z + this.origin.z),
+                // new THREE.Vector3(x + this.origin.x, this.origin.y, z + this.origin.z),
+                new THREE.Vector3(x, 0, z)
             );
         }
+
+        // rotate and offset vertices
+        let flatPoints = this.vertices.reduce((arr, v) => {
+            return arr.concat([Number(v.x), Number(v.y), Number(v.z)]);
+        }, []);
+        this.vertices = BoneUtils.qVector3FromFlat(BoneUtils.qRotatePoints(flatPoints, this.rotation))
+            .map(vec => { vec.x += this.origin.x; vec.y += this.origin.y; vec.z += this.origin.z; return vec; });
 
         const {p} = BoneUtils.textureVars();
 
@@ -357,6 +380,23 @@ class DiscBone {
                 );
             }
         }
+    }
+
+    static rotatePoints (points, dir) {
+        
+        let bg = new THREE.BufferGeometry();
+        // flatten points
+        let verts = new Float32Array(points.reduce((arr, v3) => arr.concat([v3.x, v3.y, v3.z]), []));
+        bg.addAttribute("position", new THREE.BufferAttribute( verts, 3 ));
+        // rotate points
+        bg.lookAt(dir);
+        // return same format we started with
+        let vectors = [];
+        for (let i = 0;i < bg.attributes.position.array.length;i+=3) {
+            vectors.push(new THREE.Vector3( ...(bg.attributes.position.array.slice(i, i+3)) ));
+        }
+        
+        return vectors;
     }
 
     // get direction between 2 bones or vector3

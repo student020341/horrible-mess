@@ -51,8 +51,8 @@ function init()
 	camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
 	// add the camera to the scene
 	scene.add(camera);
-	// camera.position.set(0,0,50);
-	camera.position.set(0,0,12);
+	camera.position.set(0,0,50);
+	// camera.position.set(0,0,12);
 	
 	// create and start the renderer; choose antialias setting.
 	renderer = new THREE.WebGLRenderer( {antialias:true} );
@@ -68,52 +68,13 @@ function init()
 	
 	let skeleton = new Skeleton(
 		[
-			new DiscBone(new THREE.Vector3(0, 0, 0), {segment: 4, rotation: [0, Math.PI/2]}),
-			// new DiscBone(new THREE.Vector3(0, 16, 0), {segment: 4, rotation: [-Math.PI/4, Math.PI/2]}),
-			// new DiscBone(new THREE.Vector3(16, 16, 0), {segment: 4, rotation: [-Math.PI/2, Math.PI/2]}),
+			new DiscBone(new THREE.Vector3(0, 0, 0), {segment: 4, rotation: new THREE.Vector3(0, 1, 0)}),
+			new DiscBone(new THREE.Vector3(0, 16, 0), {segment: 4, rotation: new THREE.Vector3(1, 1, 0)}),
+			// new DiscBone(new THREE.Vector3(16, 16, 0), {segment: 4, rotation: new THREE.Vector3(1, 0, 0)}),
 		]
 	);
 	mesh3 = skeleton.createModel();
 	scene.add(mesh3);
-
-	// target line
-	line = BoneUtils.SimpleLine([
-		new THREE.Vector3(0, 0, 0),
-		new THREE.Vector3(5, 10, 10)
-	]);
-	scene.add(line);
-
-	// current line
-	line2 = BoneUtils.SimpleLine([
-		new THREE.Vector3(0, 0, 0),
-		new THREE.Vector3(0, 0, 10)
-	], 0xff0000);
-	scene.add(line2);
-
-	var tp = [
-		new THREE.Vector3(0, 0, 0)
-	].concat([
-		[0, Math.PI/2],
-		[Math.PI * (1/4), Math.PI*(5/8)], // working on this, 
-		[Math.PI/2, Math.PI * (3/4)],
-		[Math.PI*(3/4), Math.PI*(3/4)],
-		[Math.PI, Math.PI/2],
-		[Math.PI * (5/4), Math.PI/4],
-		[Math.PI * (6/4), Math.PI/4]
-	].map(arr => {
-		let [x,y,z] = BoneUtils.pointOnSphere(4, arr[0], arr[1]);
-		return new THREE.Vector3(x, y, z);
-	}));
-	// var tp = [new THREE.Vector3(0, 0, 0)];
-	// const pi = Math.PI;
-	// for (let i = 0;i < 7;i++) {
-	// 	let theta = i * (pi/4);
-	// 	let phi = (pi/2) + (i * pi * (1/8));
-	// 	let [x, y, z] = BoneUtils.pointOnSphere(4, theta, phi);
-	// 	tp.push(new THREE.Vector3(x, y, z));
-	// }
-	line3 = BoneUtils.SimpleLine(tp, 0x00ff00);
-	scene.add(line3);
 	
 	// fog must be added to scene before first render
     scene.fog = new THREE.FogExp2( 0x9999ff, 0.00025 );
@@ -123,15 +84,9 @@ function init()
 	// inputs / debug
 	document.getElementById("rotY").addEventListener("input", (e) => {
 		mesh3.rotation.y = e.target.value;
-		line.rotation.y = e.target.value;
-		line2.rotation.y = e.target.value;
-		line3.rotation.y = e.target.value;
 	});
     document.getElementById("rotX").addEventListener("input", e => {
 		mesh3.rotation.x = e.target.value;
-		line.rotation.x = e.target.value;
-		line2.rotation.x = e.target.value;
-		line3.rotation.x = e.target.value;
 	});
 }
 
