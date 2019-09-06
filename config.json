@@ -1,3 +1,3 @@
 {
-    "include": ["misc", "tag", "shirt", "store-locator", "nest-chat"]
+    "include": ["misc", "tag", "shirt", "mock"]
 }
