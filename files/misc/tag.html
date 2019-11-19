@@ -53,7 +53,8 @@ function init() {
     stuff.stats = {
         frameSamples: [],
         fps: 0,
-        debug: {}
+        debug: {},
+        idle: 0
     };
 
     stuff.speeds = {
@@ -233,6 +234,16 @@ function draw () {
         return;
     }
 
+    // kicked message
+    if (stuff.stats.idle > 0 && stuff.ws && !stuff.ws.ready) {
+        c.fillStyle = "black";
+        c.fillRect(0, 0, 800, 600);
+        c.font = "50px monospace";
+        c.fillStyle = "red";
+        c.fillText("Kicked for inactivity :)", 40, 200);
+        return;
+    }
+
     // clear area
     c.clearRect(0, 0, 800, 600)
     c.fillStyle = "black";
@@ -316,6 +327,18 @@ function draw () {
     }
 
     c.strokeStyle = 'black';
+
+    // idle warning message
+    if (stuff.stats.idle > 6) {
+        c.fillStyle = "black";
+        c.globalAlpha = 0.2;
+        c.fillRect(0, 0, 200, 50);
+        c.globalAlpha = 0.5;
+        c.font = "22px monospace";
+        c.fillStyle = "red";
+        c.fillText("IDLE WARNING", 20, 25);
+        c.globalAlpha = 1.0;
+    }
 }
 
 function timeParticleEffects (c, pos) {
@@ -475,6 +498,13 @@ function tagStep () {
     }
 }
 
+function kickStep (dt) {
+    stuff.stats.idle += dt;
+    if (stuff.stats.idle > 12) {
+        stuff.ws.socket.close();
+    }
+}
+
 function step (dt) {
 
     // everyone is running away, don't do anything
@@ -547,11 +577,18 @@ function step (dt) {
     }
 }
 
-function networkStep () {
+function networkStep (dt) {
     if (!stuff.ws || !stuff.ws.ready) { return; }
+    if (stuff.ws.socket.readyState === 2 || stuff.ws.socket.readyState === 3) { 
+        stuff.ws.ready = false; 
+        return; 
+    }
 
+    kickStep(dt);
     const dist = getDist(stuff.player.position, stuff.ws.lastPos);
     if (dist > 15) {
+        // reset idle timer
+        stuff.stats.idle = 0;
         // send new position to server
         stuff.ws.socket.send(JSON.stringify({
             action: "client-position",
@@ -588,7 +625,7 @@ async function loop () {
 
             draw();
             step(dt);
-            networkStep();
+            networkStep(dt);
             
             resolve();
         }));
