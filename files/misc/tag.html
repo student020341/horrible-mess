@@ -120,6 +120,12 @@ function init() {
     if (networkZombie) {
         networkStuff();
     }
+
+    document.addEventListener("visibilitychange", event => {
+        if(stuff.ws && stuff.ws.ready && document.hidden) {
+            kickStep(1000);
+        }
+    });
 }
 
 function networkStuff () {
