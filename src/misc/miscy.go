@@ -1,8 +1,8 @@
 package main
 
 import (
+	"github.com/student020341/LearningGolang/src/lib/RouterModule"
 	"net/http"
-	"../lib/RouterModule"
 	"strconv"
 )
 
@@ -11,16 +11,16 @@ func HandleWeb(w http.ResponseWriter, r *http.Request, path []string) {
 	router.Handle(w, r, path)
 }
 
-func GetName () string {
+func GetName() string {
 	return "misc"
 }
 
 var router RouterModule.SubRouter
 
-func init(){
+func init() {
 	// setup router
-	router.Register("/file/*", "GET", func(w http.ResponseWriter, r *http.Request, args map[string]interface{}){
-		http.ServeFile(w, r, "./files/misc/" + r.URL.Path[11:]);
+	router.Register("/file/*", "GET", func(w http.ResponseWriter, r *http.Request, args map[string]interface{}) {
+		http.ServeFile(w, r, "./files/misc/"+r.URL.Path[11:])
 	})
 	// test status codes
 	router.Register("/code/:code", "*", func(args map[string]interface{}) interface{} {
@@ -39,11 +39,11 @@ func init(){
 
 		return map[string]interface{}{
 			"HTTPStatusCode": code,
-			"status": msg,
+			"status":         msg,
 		}
 	})
 }
 
 func main() {
-	
+
 }

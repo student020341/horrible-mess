@@ -1,8 +1,0 @@
-<div>
-    <h1>New Project</h1>
-    <label>Project Name: {{name}}</label><br />
-    <p v-if="!validName">Project name is invalid</p>
-    <input v-model="name" type="text" /><br />
-    <button :disabled="!validName" v-on:click="submit">Submit</button>
-    <button v-on:click="goToHome">Cancel</button>
-</div>

@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-	"../lib/RouterModule"
+
+	"github.com/student020341/LearningGolang/src/lib/RouterModule"
 )
 
 // the universe began on 11/12/2018
@@ -16,7 +17,7 @@ func HandleWeb(w http.ResponseWriter, r *http.Request, path []string) {
 	router.Handle(w, r, path)
 }
 
-func GetName () string {
+func GetName() string {
 	return "shirt"
 }
 
@@ -39,32 +40,32 @@ func handleDate(args map[string]interface{}) interface{} {
 
 	timeDiff := requestedDate.Sub(TheBeginning)
 	days := int(timeDiff.Hours() / 24)
-	if (days < 0) {
+	if days < 0 {
 		return map[string]interface{}{
 			"status": fmt.Sprintf("Error: your request predates the beginning of time by %v days", -days),
 		}
 	}
 
 	dayOfWeek := days % 7
-	matrixOffset := (days/7)%5
-	
-	if (dayOfWeek > 4) {
+	matrixOffset := (days / 7) % 5
+
+	if dayOfWeek > 4 {
 		return map[string]interface{}{
-			"status" : "it's a weekend, who knows",
+			"status": "it's a weekend, who knows",
 		}
 	}
 
 	return map[string]interface{}{
 		"days-since-zero": days,
-		"number": dayOfWeek,
-		"offset": matrixOffset,
-		"color": ShirtMatrix[matrixOffset][dayOfWeek],
+		"number":          dayOfWeek,
+		"offset":          matrixOffset,
+		"color":           ShirtMatrix[matrixOffset][dayOfWeek],
 	}
 }
 
 var router RouterModule.SubRouter
 
-func init(){
+func init() {
 	// skipping error check on constant
 	TheBeginning, _ = time.Parse(time.RFC3339, "2018-11-12T00:00:00Z")
 	fmt.Println("time since the beginning:", time.Since(TheBeginning))
@@ -79,7 +80,7 @@ func init(){
 	// setup router
 	router.Register("/", "GET", handleHome)
 	router.Register("/date", "REPORT", handleDate)
-	router.Register("*", "*", func(map[string]interface{})interface{}{
+	router.Register("*", "*", func(map[string]interface{}) interface{} {
 		return map[string]interface{}{
 			"status": "I hope you find what you're looking for, someday.",
 		}

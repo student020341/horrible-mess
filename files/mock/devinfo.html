@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <!-- Copyright Siebensense Pte Ltd	-->
+    <!-- Licensed to ServersCheck BVBA	-->
+    <!--    https://infrasensing.com/	-->
+    <!-- See legal notices on this device	-->
+
+    <title>InfraSensing</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+
+    <link rel="icon" type="image/svg+xml" href="images/logo_serverscheck.svg">
+    <link rel="stylesheet" type="text/css" href="/css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="/css/sensorgateway.css">
+    <link rel="stylesheet" type="text/css" href="/css/oem.css">
+
+    <script src="/js/jquery.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/jquery.form-validator.min.js"></script>
+    <script src="/js/sensor_gateway.js"></script>
+</head>
+
+<body>
+
+    <div id="wrapper" class="wrapper">
+
+        <!-- Navigation -->
+        <nav class='navbar navbar-default navbar-fixed-top' style='margin-bottom: 0;'>
+            <div class="container-fluid">
+                <div class='navbar-header'>
+                    <button type='button' class='navbar-toggle' id="menu-toggle" data-toggle="collapse"
+                        data-target="#myNavbar">
+                        <span class='sr-only'>Toggle navigation</span>
+                        <span class='icon-bar white-back' style='background-color: #FFF;'></span>
+                        <span class='icon-bar white-back' style='background-color: #FFF;'></span>
+                        <span class='icon-bar white-back' style='background-color: #FFF;'></span>
+                    </button>
+                    <a class='navbar-brand' href='/sensor_status.html' style='color:#fff;'><img
+                            src="images/logo_serverscheck.svg" style='position:relative;top:-6px;height:42px;'></a>
+                </div>
+
+                <!-- Sidebar -->
+                <div class="collapse navbar-collapse" id="myNavbar">
+                    <ul class="nav navbar-nav">
+                        <li><a href="sensor_status.html">Sensor Status</a></li>
+                        <li><a href="logviewer.html">Alert History</a></li>
+                        <li><a href="devinfo.html">Settings</a></li>
+                        <li><a href="https://store.serverscheck.com/">Buy new sensors</a></li>
+                        <li><a href="https://my.serverscheck.com/">myServersCheck & Support</a></li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container" style="padding-top:70px;">
+            <!-- Begin content -->
+
+            <style>
+                .btn-xs {
+                    width: 145px;
+                }
+            </style>
+
+            <script language="Javascript">
+                function SNTPloadXMLDoc(url) {
+                    if (window.XMLHttpRequest) {
+                        // code for IE7+, Firefox, Chrome, Opera, Safari
+                        xmlhttp = new XMLHttpRequest();
+                        xmlhttp.open("GET", url, false);
+                        xmlhttp.send(null);
+                    }
+                    else {
+                        // code for IE6, IE5
+                        xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+                        xmlhttp.open("GET", url, false);
+                        // Do not send null for ActiveX
+                        xmlhttp.send();
+                    }
+
+                    if (xmlhttp.readyState == 4) {
+                        var xmlDoc = xmlhttp.responseXML.documentElement;
+                        document.getElementById('retcurdate').innerHTML = xmlDoc.getElementsByTagName("shdate")[0].firstChild.nodeValue;
+                        document.getElementById('retcurtime').innerHTML = xmlDoc.getElementsByTagName("shtime")[0].firstChild.nodeValue;
+                        document.getElementById('nodestatus').innerHTML = xmlDoc.getElementsByTagName("nodestatus")[0].firstChild.nodeValue;
+                    }
+                }
+
+                setInterval("SNTPloadXMLDoc( './retcursystime.xml' )", 500);
+
+            </script>
+
+            <div class="row">
+                <div class="col-xs-12 col-md-9">
+                    <div class="row">
+                        <div class="col-xs-6 nopadding">
+                            <h1>Settings & Info</h1>
+                        </div>
+                        <div class="col-xs-6 text-right">
+                            <a href="firewall.html" class="btn btn-success">Firewall</a>&nbsp;&nbsp;
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <b>Device information</b>
+
+            <div class="row">
+                <div class="col-xs-12 col-md-9">
+
+                    <div class="row">
+                        <div class="col-xs-6 col-md-4">Account name</div>
+                        <div class="col-xs-6 col-md-8">admin<br>
+                            <div style="display: inline;"><a href="/account.html" class="btn btn-oem btn-xs">Change
+                                    Password</a></div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-xs-6 col-md-4">Current System Date</div>
+                        <div id="retcurdate" class="col-xs-6 col-md-8"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-xs-6 col-md-4">Current System Time </div>
+                        <div class="col-xs-6 col-md-8">
+                            <div id="retcurtime" style="display: inline"></div><br>
+                            <div style="display: inline;"><a href="sntp.html" class="btn btn-oem btn-xs">Update Time</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-xs-6 col-md-4">Hardware Version</div>
+                        <div class="col-xs-6 col-md-8">Release 5.1</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-xs-6 col-md-4">Firmware Version</div>
+                        <div class="col-xs-6 col-md-8">Release 8.10 (Jul 1 2019)<br>
+                            <div style="display: inline;"><a href="fw_update.html" class="btn btn-oem btn-xs">Upgrade
+                                    Firmware</a></div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-xs-6 col-md-4">Mac Address</div>
+                        <div class="col-xs-6 col-md-8">00:03:64:03:61:BF</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-xs-6 col-md-4">IP Address</div>
+                        <div class="col-xs-6 col-md-8">192.168.0.9<br>
+                            <div style="display: inline;"><a href="network.html" class="btn btn-oem btn-xs">Change
+                                    IP</a></div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-xs-6 col-md-4">Node Status (online/used/max)</div>
+                        <div class="col-xs-6 col-md-8">
+                            <div id="nodestatus" style="display: inline"></div><br>
+                            <div style="display: inline;"><a href="calibration.html"
+                                    class="btn btn-oem btn-xs">Calibrate Sensors</a></div>
+                        </div>
+                    </div>
+                    <br><br>
+                    <b>Industrial & external communications</b>
+                    <div class="row">
+                        <div class="col-xs-4">
+                            <div class="row">
+                                <div class="col-xs-6">
+                                    <a href="/snmp.html">SNMP</a>
+                                </div>
+                                <div class="col-xs-6 material-switch" id="snmp">
+                                    <input id="snmpSwitchOptionSuccess" type="checkbox" name="en_snmp_agent" checked
+                                        value="1" disabled>
+                                    <label for="snmpSwitchOptionSuccess" class="label-success"></label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-xs-4">
+                            <div class="row">
+                                <div class="col-xs-6">
+                                    <a href="/cloud.html">Cloud</a>
+                                </div>
+                                <div class="col-xs-6 material-switch" id="cloud">
+                                    <input id="cloudSwitchOptionSuccess" type="checkbox" name="encloud" value="1"
+                                        disabled>
+                                    <label for="cloudSwitchOptionSuccess" class="label-success"></label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-xs-4">
+                            <div class="row">
+                                <div class="col-xs-6">
+                                    <a href="/email.html">Email</a>
+                                </div>
+                                <div class="col-xs-6 material-switch" id="email">
+                                    <input id="emailSwitchOptionSuccess" type="checkbox" name="enemail" value="1"
+                                        disabled>
+                                    <label for="emailSwitchOptionSuccess" class="label-success"></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-xs-4">
+                            <div class="row">
+                                <div class="col-xs-6">
+                                    <a href="/modbus.html">Modbus</a>
+                                </div>
+                                <div class="col-xs-6 material-switch" id="modbus">
+                                    <input id="modbusSwitchOptionSuccess" type="checkbox" name="enmodbus" value="1"
+                                        disabled>
+                                    <label for="modbusSwitchOptionSuccess" class="label-success"></label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-xs-4"></div>
+                        <div class="col-xs-4">
+                            <div class="row">
+                                <div class="col-xs-6">
+                                    <a href="/sms.html">SMS</a>
+                                </div>
+                                <div class="col-xs-6 material-switch" id="sms">
+                                    <input id="smsSwitchOptionSuccess" type="checkbox" name="ensms" unchecked value="1"
+                                        disabled>
+                                    <label for="smsSwitchOptionSuccess" class="label-success"></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <br><br>
+                    <b>General settings</b>
+                    <form action="devinfo.html" method="post" role="form">
+                        <div class="row">
+                            <div class="col-xs-6 col-md-4">Device Name</div>
+                            <div class="col-xs-6 col-md-8"><input type="text" data-validation="alphanumeric length"
+                                    data-validation-allowing=" .-_" data-validation-length="max30" name="name"
+                                    value="SensorGateway" class="form-control input-sm"></div>
+                        </div>
+                        <div class="row">
+                            <div class="col-xs-6 col-md-4">Device Location</div>
+                            <div class="col-xs-6 col-md-8"><input type="text" data-validation="alphanumeric length"
+                                    data-validation-allowing=" .-_" data-validation-length="max30" name="loc"
+                                    value="Data Center" class="form-control input-sm"></div>
+                        </div>
+                        <div class="row">
+                            <div class="col-xs-6 col-md-4">Sensor Polling</div>
+                            <div class="col-xs-6 col-md-8">
+                                <div class="input-group"><span
+                                        class="input-group-addon"><small>every</small></span><input type="number"
+                                        data-validation="number" data-validation-allowing="range[1;3600]" name="poll"
+                                        value="5" class="form-control input-sm"><span
+                                        class="input-group-addon"><small>sec</small></span></div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-xs-6 col-md-4">Temperature Unit</div>
+                            <div class="col-xs-6 col-md-8"><select name="tempunit" class="form-control input-sm">
+                                    <option selected> Celsius</option>
+                                    <option> Fahrenheit</option>
+                                </select></div>
+                        </div>
+                        <div class="row">
+                            <div class="col-xs-6 col-md-4">OLED Screen</div>
+                            <div class="col-xs-6 col-md-8">
+                                <select name="oledenable" class="form-control input-sm">
+                                    <option>Disable</option>
+                                    <option selected>Enable</option>
+                                </select></div>
+                        </div>
+                        <div class="row">
+                            <div class="col-xs-6 col-md-4">Repeat Alarm Time</div>
+                            <div class="col-xs-6 col-md-8">
+                                <div class="input-group"><span
+                                        class="input-group-addon"><small>every</small></span><input type="number"
+                                        name="repeat_time" value="5" data-validation="number"
+                                        class="form-control input-sm"><span
+                                        class="input-group-addon"><small>min</small></span></div>
+                            </div>
+                        </div>
+                        <br><br>
+                        <div class="row">
+                            <div class="col-xs-4">
+                                <input type="submit" value="Update" class="btn btn-oem">
+                            </div>
+                            <div class="col-xs-4">
+                                <a href="reboot.html" class="btn btn-danger">Reboot</a>
+                            </div>
+                            <div class="col-xs-4 text-right">
+                                <a href="legal.html" class="btn btn-info">Legal Info</a>
+                            </div>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+            <script>
+                $("#snmp").click(function () {
+                    window.location = 'snmp.html';
+                });
+                $("#modbus").click(function () {
+                    window.location = 'modbus.html';
+                });
+                $("#email").click(function () {
+                    window.location = 'email.html';
+                });
+                $("#sms").click(function () {
+                    window.location = 'sms.html';
+                });
+                $("#cloud").click(function () {
+                    window.location = 'cloud.html';
+                });
+            </script>
+
+
+            <!--End content-->
+        </div>
+    </div>
+
+    <script>
+        $.validate();
+        $(function () {
+            $('input[type="text"]').change(function () {
+                this.value = $.trim(this.value);
+            });
+        });
+        console.log('validator loaded');
+    </script>
+
+
+</body>
+
+</html>

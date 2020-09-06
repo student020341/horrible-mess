@@ -1,20 +1,21 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
-	"plugin"
 	"os"
 	"os/exec"
+	"plugin"
 	"strings"
-	"io/ioutil"
-	"encoding/json"
 )
 
+// WebRouter - handler functions from sub routed applications
 var WebRouter map[string]func(http.ResponseWriter, *http.Request, []string)
 
 // plugin related
-func deleteBuiltModules () {
+func deleteBuiltModules() {
 	builtFiles, err := os.Open("./modules")
 	if err != nil {
 		panic(err)
@@ -33,10 +34,10 @@ func deleteBuiltModules () {
 	}
 }
 
-func buildModules () []string {
+func buildModules() []string {
 
 	var names []string
-	fmt.Println("discovering plugins...");
+	fmt.Println("discovering plugins...")
 	// find all plugins
 	files, err := os.Open("./src")
 	if err != nil {
@@ -77,14 +78,14 @@ func buildModules () []string {
 		if err != nil {
 			panic(err)
 		} else {
-			names = append(names, name + ".so")
+			names = append(names, name+".so")
 		}
 	}
 
 	return names
 }
 
-func getExistingModules () []string {
+func getExistingModules() []string {
 	include := progArgs["include"].([]string)
 	builtFiles, err := os.Open("./modules")
 	if err != nil {
@@ -96,12 +97,12 @@ func getExistingModules () []string {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	var files []string
-	if (len(include) > 0) {
+	if len(include) > 0 {
 		for _, file := range list {
 			for _, inc := range include {
-				if file == (inc+".so") {
+				if file == (inc + ".so") {
 					files = append(files, file)
 					break
 				}
@@ -114,21 +115,21 @@ func getExistingModules () []string {
 	return files
 }
 
-func loadModules (names []string) {
+func loadModules(names []string) {
 	fmt.Printf("loading %v modules...\n", len(names))
 	// initialize web handler
 	WebRouter = make(map[string]func(http.ResponseWriter, *http.Request, []string))
 	// load plugins
 	loaded := 0
 	for _, name := range names {
-		mod, err := plugin.Open("./modules/"+name)
+		mod, err := plugin.Open("./modules/" + name)
 		// lookup exported router module name
 		exportedGetName, err := mod.Lookup("GetName")
 		if err != nil {
 			fmt.Printf("module '%s' did not provide a name", name)
 			continue
 		}
-		getName, ok := exportedGetName.(func()string)
+		getName, ok := exportedGetName.(func() string)
 		if !ok {
 			fmt.Printf("GetName failed for module '%s'", name)
 			continue
@@ -148,12 +149,12 @@ func loadModules (names []string) {
 	fmt.Printf("loaded %v modules\n", loaded)
 }
 
-func argsAndConfig () {
+func argsAndConfig() {
 	// default program options
 	progArgs = map[string]interface{}{
-		"build": false,
+		"build":   false,
 		"include": []string{},
-	};
+	}
 
 	// get config file
 	configRaw, err := ioutil.ReadFile("config.json")
@@ -202,8 +203,8 @@ func doPluginStuff() {
 	loadModules(files)
 }
 
-// main server handler
-func Handle (w http.ResponseWriter, r *http.Request) {
+// Handle - main server handler
+func Handle(w http.ResponseWriter, r *http.Request) {
 	path := fixPath(strings.Split(r.URL.Path, "/"))
 	if len(path) == 0 {
 		fmt.Fprintf(w, "home")
@@ -217,7 +218,7 @@ func Handle (w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func fixPath (path []string) []string {
+func fixPath(path []string) []string {
 	var tmp []string
 	for _, value := range path {
 		if value != "" {
@@ -231,8 +232,8 @@ var progArgs map[string]interface{}
 
 func main() {
 
-	argsAndConfig();
-	doPluginStuff();
+	argsAndConfig()
+	doPluginStuff()
 
 	// todo: make server killable via web request
 	http.HandleFunc("/", Handle)

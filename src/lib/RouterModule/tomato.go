@@ -1,16 +1,16 @@
 package RouterModule
 
 import (
-	"fmt"
-	"strings"
-	"net/http"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
+	"strings"
 )
 
 type SubRoute struct {
-	Path []string
-	Method string
+	Path    []string
+	Method  string
 	Handler interface{}
 }
 
@@ -18,7 +18,7 @@ type SubRouter struct {
 	Routes []SubRoute
 }
 
-func fixPath (path []string) []string {
+func fixPath(path []string) []string {
 	var tmp []string
 	for _, value := range path {
 		if value != "" {
@@ -28,7 +28,7 @@ func fixPath (path []string) []string {
 	return tmp
 }
 
-func (route *SubRoute) GetRouteParams (path []string) map[string]string {
+func (route *SubRoute) GetRouteParams(path []string) map[string]string {
 	args := make(map[string]string)
 	for index, routeChunk := range route.Path {
 		if string(routeChunk[0]) == ":" {
@@ -38,7 +38,7 @@ func (route *SubRoute) GetRouteParams (path []string) map[string]string {
 	return args
 }
 
-func GetQueryParams (r *http.Request) map[string]interface{} {
+func GetQueryParams(r *http.Request) map[string]interface{} {
 	obj := make(map[string]interface{})
 
 	for key, value := range r.URL.Query() {
@@ -52,7 +52,7 @@ func GetQueryParams (r *http.Request) map[string]interface{} {
 	return obj
 }
 
-func GetRequestBody (r *http.Request) map[string]interface{} {
+func GetRequestBody(r *http.Request) map[string]interface{} {
 	if r.Body == nil {
 		return nil
 	}
@@ -69,7 +69,7 @@ func GetRequestBody (r *http.Request) map[string]interface{} {
 	return obj
 }
 
-func (route *SubRoute) MatchPath (path []string, method string) bool {
+func (route *SubRoute) MatchPath(path []string, method string) bool {
 	if route.Method != "*" && method != route.Method {
 		return false
 	}
@@ -81,6 +81,12 @@ func (route *SubRoute) MatchPath (path []string, method string) bool {
 			break
 		}
 	}
+
+	// glob is at start, catch all route
+	if globIndex == 0 {
+		return true
+	}
+
 	if len(path) != len(route.Path) && (globIndex == -1 || globIndex >= len(path)) {
 		// if there is a glob, the request /shirt/file/img/something.png could match /shirt/file/*
 		// can also be used to have another sub router
@@ -104,16 +110,16 @@ func (route *SubRoute) MatchPath (path []string, method string) bool {
 }
 
 // add route to router
-func (router *SubRouter) Register (uri string, method string, handler interface{}) {
+func (router *SubRouter) Register(uri string, method string, handler interface{}) {
 	router.Routes = append(router.Routes, SubRoute{
-		Path: fixPath(strings.Split(uri, "/")),
-		Method: method,
+		Path:    fixPath(strings.Split(uri, "/")),
+		Method:  method,
 		Handler: handler,
 	})
 }
 
 // default handler
-func (router *SubRouter) Handle (w http.ResponseWriter, r *http.Request, path []string) {
+func (router *SubRouter) Handle(w http.ResponseWriter, r *http.Request, path []string) {
 
 	var response interface{}
 	haveMatch := false
@@ -133,19 +139,37 @@ func (router *SubRouter) Handle (w http.ResponseWriter, r *http.Request, path []
 			args["query"] = GetQueryParams(r)
 			// identify type of sub route handler
 			switch t := sub.Handler.(type) {
-				// simplified handler that returns json
-				case func(map[string]interface{})interface{}:
-					writeResponse = true
-					response = t(args)
-				// generic handler that will write its own response to client
-				case func(w http.ResponseWriter, r *http.Request, args map[string]interface{}):
-					t(w, r, args)
+			// simplified handler that returns json
+			case func(map[string]interface{}) interface{}:
+				writeResponse = true
+				response = t(args)
+			// generic handler that will write its own response to client
+			case func(w http.ResponseWriter, r *http.Request, args map[string]interface{}):
+				t(w, r, args)
 			}
 			break
 		}
 	}
 
 	if haveMatch && writeResponse {
+		responseStatusCode := 200
+		// check for custom status code
+		hash, haveMap := response.(map[string]interface{})
+		if haveMap {
+			if StatusCode, ok := hash["HTTPStatusCode"]; ok {
+				intStatusCode, ok := StatusCode.(int)
+				// remove 'HTTPStatusCode' from response
+				delete(response.(map[string]interface{}), "HTTPStatusCode")
+				if ok {
+					responseStatusCode = intStatusCode
+				} else {
+					w.WriteHeader(http.StatusInternalServerError)
+					fmt.Println("error processing response")
+					return
+				}
+			}
+		}
+
 		encoded, err := json.Marshal(response)
 		if err != nil {
 			fmt.Println(err)
@@ -153,24 +177,10 @@ func (router *SubRouter) Handle (w http.ResponseWriter, r *http.Request, path []
 			fmt.Fprintf(w, "failed to encode response")
 		} else {
 			w.Header().Set("Content-Type", "application/json")
-			// todo: revisit how this works / do this check earlier
-			// - remove HTTPStatusCode from payload before this point
-			// check for a StatusCode
-			hash, haveMap := response.(map[string]interface{})
-			if (haveMap) {
-				if StatusCode, ok := hash["HTTPStatusCode"]; ok {
-					intStatusCode, ok := StatusCode.(int)
-					if ok {
-						w.WriteHeader(intStatusCode)
-					} else {
-						w.WriteHeader(http.StatusInternalServerError)
-						fmt.Println("error processing status code:", err.Error())
-					}
-				}
-			}
+			w.WriteHeader(responseStatusCode)
 			fmt.Fprintf(w, "%v", string(encoded))
 		}
-	} else if (!haveMatch) {
+	} else if !haveMatch {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "unhandled request")
 	}

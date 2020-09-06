@@ -3,13 +3,14 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
 	"encoding/json"
+	"fmt"
 	"io"
-	"../lib/RouterModule"
-	"golang.org/x/net/websocket"
+	"net/http"
 	"strconv"
+
+	"github.com/student020341/LearningGolang/src/lib/RouterModule"
+	"golang.org/x/net/websocket"
 )
 
 func HandleWeb(w http.ResponseWriter, r *http.Request, path []string) {
@@ -17,7 +18,7 @@ func HandleWeb(w http.ResponseWriter, r *http.Request, path []string) {
 	router.Handle(w, r, path)
 }
 
-func GetName () string {
+func GetName() string {
 	return "tag"
 }
 
@@ -29,17 +30,17 @@ func handleHome(w http.ResponseWriter, r *http.Request, args map[string]interfac
 // todo: handle errors in socketStuff
 func handleConnect(w http.ResponseWriter, r *http.Request, args map[string]interface{}) {
 	var handler websocket.Handler = socketStuff
-	handler.ServeHTTP(w, r);
+	handler.ServeHTTP(w, r)
 }
 
 // simple client struct
 type simpleClient struct {
-	Id int
+	Id     int
 	Socket *websocket.Conn
 	// buffer position in client struct
-	Position Vector2
+	Position    Vector2
 	WorldFreeze bool
-	Tagged bool
+	Tagged      bool
 }
 
 type Vector2 struct {
@@ -49,10 +50,13 @@ type Vector2 struct {
 
 // todo: world struct with more info?
 var WorldIsFrozen bool = false
+
 // list of connected clients
 var clients []*simpleClient
+
 // id=0 is the server
 var lastId int = 1
+
 func socketStuff(ws *websocket.Conn) {
 	fmt.Println("incoming connection:", ws.Request().RemoteAddr)
 	// if this is the first player, tag them
@@ -65,26 +69,26 @@ func socketStuff(ws *websocket.Conn) {
 	websocket.Message.Send(ws, fmt.Sprintf(`{"id":%d}`, clientId))
 
 	// tell this client about other clients
-	if (len(clients) > 0) {
+	if len(clients) > 0 {
 		var otherIds []interface{}
 		for _, other := range clients {
 			// todo: also send positions, once those are tracked on the back end
 			otherIds = append(otherIds, map[string]interface{}{
-				"id": other.Id,
-				"x": other.Position.X,
-				"y": other.Position.Y,
+				"id":     other.Id,
+				"x":      other.Position.X,
+				"y":      other.Position.Y,
 				"tagged": other.Tagged,
-				"focus": other.WorldFreeze,
+				"focus":  other.WorldFreeze,
 			})
 		}
 
 		encoded, err := json.Marshal(map[string]interface{}{
-			"action": "add-clients",
+			"action":  "add-clients",
 			"clients": otherIds,
 		})
 		if err != nil {
 			// todo: panic?
-			return	
+			return
 		}
 		websocket.Message.Send(ws, string(encoded))
 	}
@@ -116,11 +120,11 @@ func socketStuff(ws *websocket.Conn) {
 		}
 
 		action, haveAction := obj["action"]
-		if (haveAction) {
+		if haveAction {
 
 			// special case
 			// todo: set this in handleAction now that client is passed along
-			if (action == "client-position") {
+			if action == "client-position" {
 				wsClient.Position.X = obj["x"].(float64)
 				wsClient.Position.Y = obj["y"].(float64)
 			}
@@ -130,10 +134,10 @@ func socketStuff(ws *websocket.Conn) {
 	}
 
 	// after loop
-	
+
 	// drop client from server array
 	for index, client := range clients {
-		if (client.Socket == ws) {
+		if client.Socket == ws {
 			// splice client out of collection
 			clients = append(clients[:index], clients[index+1:]...)
 		}
@@ -147,39 +151,39 @@ func socketStuff(ws *websocket.Conn) {
 	ensureSomeoneIsTagged()
 }
 
-func handleAction (client *simpleClient, data map[string]interface{}) {
+func handleAction(client *simpleClient, data map[string]interface{}) {
 	// todo: handle actions better
 	action := data["action"].(string)
-	if (action == "client-position") {
+	if action == "client-position" {
 		x, haveX := data["x"]
 		y, haveY := data["y"]
-		if (!haveX || !haveY) {
+		if !haveX || !haveY {
 			return
 		}
-		
+
 		broadcastToOther(client, map[string]interface{}{
 			"client": client.Id,
 			"action": action,
-			"x": x,
-			"y": y,
+			"x":      x,
+			"y":      y,
 		})
-	} else if (action == "world-freeze") {
+	} else if action == "world-freeze" {
 		client.WorldFreeze = true
 		updateWorldFrozen()
 		broadcastToOther(client, map[string]interface{}{
 			"action": "client-particles",
-			"value": 1,
+			"value":  1,
 			"client": client.Id,
 		})
-	} else if (action == "world-unfreeze") {
+	} else if action == "world-unfreeze" {
 		client.WorldFreeze = false
 		updateWorldFrozen()
 		broadcastToOther(client, map[string]interface{}{
 			"action": "client-particles",
-			"value": 0,
+			"value":  0,
 			"client": client.Id,
 		})
-	} else if (action == "tag") {
+	} else if action == "tag" {
 		newTag := data["client"].(string)
 		tagNum, err := strconv.Atoi(newTag)
 		if err == nil {
@@ -192,7 +196,7 @@ func handleAction (client *simpleClient, data map[string]interface{}) {
 }
 
 // if no one is tagged and we have at least 1 client, tag that first client
-func ensureSomeoneIsTagged () {
+func ensureSomeoneIsTagged() {
 	for _, client := range clients {
 		// we don't need to do anything
 		if client.Tagged {
@@ -203,14 +207,14 @@ func ensureSomeoneIsTagged () {
 	// didn't find anyone already tagged, check if we have any players
 	if len(clients) > 0 {
 		// unfairly set the first client to IT
-		tagBroadcast( clients[0].Id )
+		tagBroadcast(clients[0].Id)
 	}
 }
 
 // set the given client to tagged and unset anyone else
-func tagBroadcast (newTag int) {
+func tagBroadcast(newTag int) {
 	for _, client := range clients {
-		if (newTag == client.Id) {
+		if newTag == client.Id {
 			client.Tagged = true
 		} else {
 			client.Tagged = false
@@ -219,56 +223,56 @@ func tagBroadcast (newTag int) {
 
 	// clients will unset their tagged value unless it matches the incoming client id
 	broadcastToAll(map[string]interface{}{
-		"id": 0,
+		"id":     0,
 		"action": "tag",
 		"client": newTag,
 	})
 }
 
 // todo: this might need a mutex lock
-func updateWorldFrozen () {
+func updateWorldFrozen() {
 	frozen := false
 	for _, client := range clients {
-		if (client.WorldFreeze) {
+		if client.WorldFreeze {
 			frozen = true
 			break
 		}
 	}
 
-	if (frozen != WorldIsFrozen) {
+	if frozen != WorldIsFrozen {
 		WorldIsFrozen = frozen
 		var nextWorldState string
-		if (frozen) {
+		if frozen {
 			nextWorldState = "freeze"
 		} else {
 			nextWorldState = "unfreeze"
 		}
 
 		broadcastToAll(map[string]interface{}{
-			"id": 0,
+			"id":     0,
 			"action": nextWorldState,
 		})
 	}
 }
 
-func otherClientsAddNew (client *simpleClient) {
+func otherClientsAddNew(client *simpleClient) {
 	broadcastToOther(client, map[string]interface{}{
-		"id": 0,
+		"id":     0,
 		"action": "client-add",
 		"client": client.Id,
 	})
 }
 
-func otherClientsRemove (client *simpleClient) {
+func otherClientsRemove(client *simpleClient) {
 	broadcastToOther(client, map[string]interface{}{
-		"id": 0,
+		"id":     0,
 		"action": "client-remove",
 		"client": client.Id,
 	})
 }
 
 // send data to all clients except for id
-func broadcastToOther (client *simpleClient, data interface{}) {
+func broadcastToOther(client *simpleClient, data interface{}) {
 
 	// get data as json
 	encoded, err := json.Marshal(data)
@@ -279,14 +283,14 @@ func broadcastToOther (client *simpleClient, data interface{}) {
 
 	// transmit json to other clients
 	for _, aClient := range clients {
-		if (aClient != client) {
+		if aClient != client {
 			websocket.Message.Send(aClient.Socket, string(encoded))
 		}
 	}
 }
 
-func broadcastToAll (data interface{}) {
-	encoded, err := json.Marshal(data);
+func broadcastToAll(data interface{}) {
+	encoded, err := json.Marshal(data)
 	if err != nil {
 		fmt.Println("json encode failed for broadcast all:", err)
 		return
@@ -299,7 +303,7 @@ func broadcastToAll (data interface{}) {
 
 var router RouterModule.SubRouter
 
-func init(){
+func init() {
 	// setup router
 	router.Register("/", "GET", handleHome)
 	router.Register("/connect", "GET", handleConnect)

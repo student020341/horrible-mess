@@ -2,7 +2,7 @@ package main
 
 import (
 	"net/http"
-	"../lib/RouterModule"
+	"github.com/student020341/LearningGolang/src/lib/RouterModule"
 	"encoding/json"
 	"math/rand"
 )
@@ -17,10 +17,17 @@ func GetName () string {
 }
 
 var router RouterModule.SubRouter
+var live bool = true
+var mac string = "00:03:64:03:61:BF"
 
 func init(){
 	// setup router
 	router.Register("/probe_list.json", "GET", func(args map[string]interface{})interface{}{
+		if !live {
+			return map[string]interface{}{
+				"HTTPStatusCode": 500,
+			}
+		}
 		sample := `{
 			"probe_no": 5,
 			"probe_list":[
@@ -178,6 +185,13 @@ func init(){
 		return obj
 	})
 	router.Register("/probe_update.json", "GET", func(args map[string]interface{})interface{}{
+
+		if !live {
+			return map[string]interface{}{
+				"HTTPStatusCode": 500,
+			}
+		}
+
 		sample := getProbeUpdate()
 		obj := map[string]interface{}{}
 		if err := json.Unmarshal([]byte(sample), &obj); err != nil {
@@ -185,6 +199,38 @@ func init(){
 		}
 		
 		return obj
+	})
+
+	router.Register("/set/:value", "*", func(args map[string]interface{})interface{}{
+		routeVars := args["route"].(map[string]string)
+		value := routeVars["value"]
+
+		if value == "on" {
+			live = true
+			return "mock is live"
+		} else if value == "off" {
+			live = false
+			return "mock is dead"
+		}
+
+		return "expected 'on' or 'off', mock unchanged"
+	})
+
+	router.Register("/mac/:value", "*", func(args map[string]interface{})interface{}{
+		routeVars := args["route"].(map[string]string)
+		mac = routeVars["value"]
+
+		return "mac address is " + mac
+	})
+
+	router.Register("/devinfo.html", "*", func(args map[string]interface{})interface{}{
+		if live {
+			return mac;
+		} else {
+			return map[string]interface{}{
+				"HTTPStatusCode": 500,
+			}
+		}
 	})
 	
 	//todo: see why * didn't catch /
